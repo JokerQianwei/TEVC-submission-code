@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-SoftGA 选择策略
-1. ffhs: 先选可行分子(QED/SA约束)，不足时在不可行集上用 NSGA-II 补齐
-2. nsgaii: 全部候选直接用 NSGA-II 选择
-"""
+""" SoftGA selection strategy
+1. ffhs: First select feasible molecules (QED/SA constraints), and if insufficient, use NSGA-II to complete the infeasible set
+2. nsgaii: All candidates are directly selected using NSGA-II. """
 
 import argparse
 import logging
@@ -263,11 +261,11 @@ def _save_front_report(rows: List[Dict], out: str) -> None:
 
 def _print_stats(selected: List[Dict], selection_mode: str) -> None:
     if not selected:
-        logger.warning("未选出分子")
+        logger.warning("No molecules selected")
         return
     scores = [float(r["docking_score"]) for r in selected]
     logger.info(
-        "选择完成(%s): %d 个分子, docking[min=%.4f, max=%.4f, mean=%.4f]",
+        "Selection completed (%s): %d molecules, docking[min=%.4f, max=%.4f, mean=%.4f]",
         selection_mode,
         len(selected),
         min(scores),
@@ -277,7 +275,7 @@ def _print_stats(selected: List[Dict], selection_mode: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SoftGA 分子选择")
+    parser = argparse.ArgumentParser(description="SoftGA molecule selection")
     parser.add_argument("--docked_file", required=True)
     parser.add_argument("--parent_file", default=None)
     parser.add_argument("--output_file", required=True)
@@ -320,7 +318,7 @@ def main() -> None:
 
     rows = _merge_parent_child(args.parent_file, args.docked_file)
     if not rows:
-        logger.error("没有可用候选分子")
+        logger.error("No candidate molecules available")
         raise SystemExit(1)
 
     rows = _add_qed_sa(rows, cache)
@@ -334,7 +332,7 @@ def main() -> None:
         selection_mode=selection_mode,
     )
     if not selected:
-        logger.error("选择失败，结果为空")
+        logger.error("Selection failed, result is empty")
         raise SystemExit(1)
 
     if args.output_format == "smiles_only":

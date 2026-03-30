@@ -1,14 +1,12 @@
-"""
-SoftGA 混合工作流执行脚本
+""" SoftGA hybrid workflow execution script
 ==========================
-1. 种群初始化和评估
-2. 基于 SoftBD 生成新的分子
-3. 对父代和生成分子进行遗传算法操作(交叉、突变)
-4. 对新生成的子代进行评估
-5. 通过 FFHS 选择策略筛选出下一代种群
-6. 对精英种群进行评分分析并导出结果
-7. 继续迭代
-"""
+1. Population initialization and evaluation
+2. Generate new molecules based on SoftBD
+3. Perform genetic algorithm operations (crossover, mutation) on the parent and generated molecules
+4. Evaluate the newly generated offspring
+5. Screen out the next generation population through FFHS selection strategy
+6. Perform score analysis on the elite population and export the results
+7. Continue iterating """
 import os
 import sys
 import json
@@ -22,17 +20,17 @@ import csv
 import hashlib
 import random
 import secrets
-from utils.config_snapshot import save_config_snapshot #保存参数（快照）
+from utils.config_snapshot import save_config_snapshot #Save parameters (snapshot)
 from utils.config_loader import load_config, resolve_config_path
 import multiprocessing  
 import shutil  
 from rdkit import Chem
 from utils.chem_metrics import ChemMetricCache
 
-# 移除全局日志配置，避免多进程日志冲突
+# Remove global log configuration to avoid multi-process log conflicts
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-# 确保logger有基本的handler，但不会与其他进程冲突
+# Make sure the logger has basic handlers but does not conflict with other processes
 if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -69,7 +67,7 @@ ORACLE_ALL_HEADERS = [
 ]
 
 
-class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调用这个类
+class SoftGAWorkflowExecutor:    #Workflow; the main function/entry file is calling this class
     def __init__(
         self,
         config_path: str,
@@ -112,37 +110,35 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         softbd_sampler=None,
         plot_top1: bool = False,
     ):
-        """
-        初始化SoftGA工作流执行器。        
+        """         Initialize the SoftGA workflow executor.        
         Args:
-            config_path (str): 配置文件路径。
-            receptor_name (str): 目标受体名称（必填）。
-            output_dir_override (Optional[str]): 覆盖配置文件中的输出目录。
-            num_processors_override (Optional[int]): 覆盖配置文件中的处理器数量。
-            initial_population_file_override (Optional[str]): 覆盖 workflow.initial_population_file。
-            strategy_mode_override (Optional[str]): 覆盖 softbd 策略模式。
-            max_generations_override (Optional[int]): 覆盖最大代数。
-            seed_override (Optional[int]): 覆盖随机种子。
-            selection_mode_override (Optional[str]): 覆盖选择模式。
-            qed_min_override (Optional[float]): 覆盖 FFHS 约束的 QED 下限。
-            sa_max_override (Optional[float]): 覆盖 FFHS 约束的 SA 上限。
-            samples_per_parent_override (Optional[int]): 覆盖每父代样本数。
-            tanimoto_threshold_override (Optional[float]): 覆盖tanimoto阈值。
-            min_keep_ratio_override (Optional[float]): 覆盖最小保留比例。
-            max_keep_ratio_override (Optional[float]): 覆盖最大保留比例。
-            block_size_override (Optional[int]): 覆盖block_size。
-            length_override (Optional[int]): 覆盖length。
-            temperature_override (Optional[float]): 覆盖temperature。
-            nucleus_p_override (Optional[float]): 覆盖nucleus_p。
-            gpu_max_batch_size_override (Optional[int]): 覆盖gpu_max_batch_size。
-            initial_samples_override (Optional[int]): 覆盖initial_samples。
-            gen1_selection_mode_override (Optional[str]): 覆盖 Gen1 选择模式 (maxmin | random)。
-            number_of_crossovers_override (Optional[int]): 覆盖 crossover.number_of_crossovers。
-            pair_min_tanimoto_override (Optional[float]): 覆盖 crossover.pair_min_tanimoto。
-            pair_max_tanimoto_override (Optional[float]): 覆盖 crossover.pair_max_tanimoto。
-            number_of_mutants_override (Optional[int]): 覆盖 mutation.number_of_mutants。
-            enable_crowding_distance_override (Optional[bool]): 覆盖 selection.*_settings.enable_crowding_distance。
-        """
+            config_path (str): Configuration file path.
+            receptor_name (str): Target receptor name (required).
+            output_dir_override (Optional[str]): Override the output directory in the configuration file.
+            num_processors_override (Optional[int]): Override the number of processors in the configuration file.
+            initial_population_file_override (Optional[str]): Override workflow.initial_population_file.
+            strategy_mode_override (Optional[str]): Override softbd strategy mode.
+            max_generations_override (Optional[int]): Maximum number of generations to override.
+            seed_override (Optional[int]): Override the random seed.
+            selection_mode_override (Optional[str]): Override selection mode.
+            qed_min_override (Optional[float]): Override the QED lower bound for FFHS constraints.
+            sa_max_override (Optional[float]): Override the SA upper limit of FFHS constraints.
+            samples_per_parent_override (Optional[int]): Number of samples per parent to override.
+            tanimoto_threshold_override (Optional[float]): Override the tanimoto threshold.
+            min_keep_ratio_override (Optional[float]): Override the minimum keep ratio.
+            max_keep_ratio_override (Optional[float]): Override the maximum retention ratio.
+            block_size_override (Optional[int]): Override block_size.
+            length_override (Optional[int]): Override length.
+            temperature_override (Optional[float]): Override temperature.
+            nucleus_p_override (Optional[float]): Override nucleus_p.
+            gpu_max_batch_size_override (Optional[int]): Override gpu_max_batch_size.
+            initial_samples_override (Optional[int]): Override initial_samples.
+            gen1_selection_mode_override (Optional[str]): Override Gen1 selection mode (maxmin | random).
+            number_of_crossovers_override (Optional[int]): Override crossover.number_of_crossovers.
+            pair_min_tanimoto_override (Optional[float]): Override crossover.pair_min_tanimoto.
+            pair_max_tanimoto_override (Optional[float]): Override crossover.pair_max_tanimoto.
+            number_of_mutants_override (Optional[int]): Override mutation.number_of_mutants.
+            enable_crowding_distance_override (Optional[bool]): Overrides selection.*_settings.enable_crowding_distance.         """
         cli_overrides = {
             "output_dir": output_dir_override,
             "num_processors": num_processors_override,
@@ -180,7 +176,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             "docking_exhaustiveness": docking_exhaustiveness_override,
             "max_oracle_calls": max_oracle_calls_override,
         }
-        # 仅记录用户显式传入的覆盖参数，方便快照复现实验
+        # Only the coverage parameters explicitly passed in by the user are recorded to facilitate snapshot replication experiments.
         self._cli_overrides = {k: v for k, v in cli_overrides.items() if v is not None and v != ""}
 
         self.config_path = config_path
@@ -191,157 +187,157 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                 self.config['performance'] = {}
             self.config['performance']['cleanup_intermediate_files'] = bool(cleanup_intermediate_files_override)
             logger.info(
-                "运行时覆盖 cleanup_intermediate_files 为: %s",
+                "Runtime override cleanup_intermediate_files is: %s",
                 bool(cleanup_intermediate_files_override),
             )
-        # 应用处理器数量覆盖
+        # Application processor number coverage
         if num_processors_override is not None:
             if 'performance' not in self.config:
                 self.config['performance'] = {}
             self.config['performance']['number_of_processors'] = num_processors_override
-            logger.info(f"运行时覆盖处理器数量为: {num_processors_override}")
+            logger.info(f"The number of processors covered during runtime is: {num_processors_override}")
 
         if initial_population_file_override is not None:
             if 'workflow' not in self.config:
                 self.config['workflow'] = {}
             self.config['workflow']['initial_population_file'] = str(initial_population_file_override)
-            logger.info(f"运行时覆盖 initial_population_file 为: {initial_population_file_override}")
+            logger.info(f"Override initial_population_file at runtime to: {initial_population_file_override}")
             
-        # 应用 SoftBD 策略模式覆盖
+        # Apply SoftBD Policy Mode Override
         if strategy_mode_override:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'dynamic_strategy' not in self.config['softbd']:
                 self.config['softbd']['dynamic_strategy'] = {}
             self.config['softbd']['dynamic_strategy']['strategy_mode'] = strategy_mode_override
-            logger.info(f"运行时覆盖 SoftBD 策略模式为: {strategy_mode_override}")
+            logger.info(f"The runtime override SoftBD policy mode is: {strategy_mode_override}")
 
-        # 应用每父代样本数覆盖
+        # Apply samples per parent coverage
         if samples_per_parent_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'generation_params' not in self.config['softbd']:
                 self.config['softbd']['generation_params'] = {}
             self.config['softbd']['generation_params']['samples_per_parent'] = samples_per_parent_override
-            logger.info(f"运行时覆盖 samples_per_parent 为: {samples_per_parent_override}")
+            logger.info(f"Runtime override samples_per_parent to: {samples_per_parent_override}")
 
-        # 应用 tanimoto 阈值覆盖
+        # Apply tanimoto threshold override
         if tanimoto_threshold_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'generation_params' not in self.config['softbd']:
                 self.config['softbd']['generation_params'] = {}
             self.config['softbd']['generation_params']['tanimoto_threshold'] = tanimoto_threshold_override
-            logger.info(f"运行时覆盖 tanimoto_threshold 为: {tanimoto_threshold_override}")
+            logger.info(f"Runtime override tanimoto_threshold is: {tanimoto_threshold_override}")
 
-        # 应用最小保留比例覆盖
+        # Apply minimum retention ratio coverage
         if min_keep_ratio_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'dynamic_strategy' not in self.config['softbd']:
                 self.config['softbd']['dynamic_strategy'] = {}
             self.config['softbd']['dynamic_strategy']['min_keep_ratio'] = min_keep_ratio_override
-            logger.info(f"运行时覆盖 min_keep_ratio 为: {min_keep_ratio_override}")
+            logger.info(f"Runtime override min_keep_ratio is: {min_keep_ratio_override}")
 
-        # 应用最大保留比例覆盖
+        # Apply maximum retention ratio coverage
         if max_keep_ratio_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'dynamic_strategy' not in self.config['softbd']:
                 self.config['softbd']['dynamic_strategy'] = {}
             self.config['softbd']['dynamic_strategy']['max_keep_ratio'] = max_keep_ratio_override
-            logger.info(f"运行时覆盖 max_keep_ratio 为: {max_keep_ratio_override}")
+            logger.info(f"Runtime override max_keep_ratio is: {max_keep_ratio_override}")
 
         if recircle_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             self.config['softbd']['recircle'] = bool(recircle_override)
-            logger.info(f"运行时覆盖 recircle 为: {bool(recircle_override)}")
+            logger.info(f"Runtime override recircle is: {bool(recircle_override)}")
 
         if softbd_enable_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             self.config['softbd']['enable'] = bool(softbd_enable_override)
-            logger.info(f"运行时覆盖 softbd.enable 为: {bool(softbd_enable_override)}")
+            logger.info(f"Runtime override softbd.enable is: {bool(softbd_enable_override)}")
 
         if softbd_seed_mode_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             self.config['softbd']['seed_mode'] = str(softbd_seed_mode_override)
-            logger.info(f"运行时覆盖 softbd.seed_mode 为: {softbd_seed_mode_override}")
+            logger.info(f"Runtime override softbd.seed_mode to: {softbd_seed_mode_override}")
         
-        # 应用 SoftBD GPU 覆盖
+        # Apply SoftBD GPU overlay
         if gpu_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             self.config['softbd']['gpu'] = str(gpu_override)
-            logger.info(f"运行时覆盖 SoftBD gpu 为: {gpu_override}")
+            logger.info(f"Runtime override for SoftBD gpu is: {gpu_override}")
         
-        # 应用 block_size 覆盖
+        # Apply block_size override
         if block_size_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             self.config['softbd']['block_size'] = block_size_override
-            logger.info(f"运行时覆盖 block_size 为: {block_size_override}")
+            logger.info(f"Runtime override block_size is: {block_size_override}")
 
-        # 应用 length 覆盖
+        # Apply length override
         if length_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             self.config['softbd']['length'] = length_override
-            logger.info(f"运行时覆盖 length 为: {length_override}")
+            logger.info(f"Runtime override length is: {length_override}")
 
-        # 应用 temperature 覆盖
+        # Apply temperature override
         if temperature_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             self.config['softbd']['temperature'] = temperature_override
-            logger.info(f"运行时覆盖 temperature 为: {temperature_override}")
+            logger.info(f"The runtime override temperature is: {temperature_override}")
         
-        # 应用 nucleus_p 覆盖
+        # Apply nucleus_p override
         if nucleus_p_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'generation_params' not in self.config['softbd']:
                 self.config['softbd']['generation_params'] = {}
             self.config['softbd']['generation_params']['nucleus_p'] = nucleus_p_override
-            logger.info(f"运行时覆盖 nucleus_p 为: {nucleus_p_override}")
+            logger.info(f"The runtime override of nucleus_p is: {nucleus_p_override}")
 
-        # 应用 gpu_max_batch_size 覆盖
+        # Apply gpu_max_batch_size override
         if gpu_max_batch_size_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'generation_params' not in self.config['softbd']:
                 self.config['softbd']['generation_params'] = {}
             self.config['softbd']['generation_params']['gpu_max_batch_size'] = gpu_max_batch_size_override
-            logger.info(f"运行时覆盖 gpu_max_batch_size 为: {gpu_max_batch_size_override}")
+            logger.info(f"Runtime override gpu_max_batch_size is: {gpu_max_batch_size_override}")
 
-        # 应用 steps 覆盖
+        # Apply steps override
         if steps_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'generation_params' not in self.config['softbd']:
                 self.config['softbd']['generation_params'] = {}
             self.config['softbd']['generation_params']['steps'] = int(steps_override)
-            logger.info(f"运行时覆盖 steps 为: {steps_override}")
+            logger.info(f"The runtime override steps is: {steps_override}")
         
-        # 应用 initial_samples 覆盖
+        # Apply initial_samples override
         if initial_samples_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'generation_params' not in self.config['softbd']:
                 self.config['softbd']['generation_params'] = {}
             self.config['softbd']['generation_params']['initial_samples'] = initial_samples_override
-            logger.info(f"运行时覆盖 initial_samples 为: {initial_samples_override}")
+            logger.info(f"Runtime override initial_samples is: {initial_samples_override}")
 
-        # 应用 gen1_n_select 覆盖
+        # Apply gen1_n_select override
         if gen1_n_select_override is not None:
             if 'softbd' not in self.config:
                 self.config['softbd'] = {}
             if 'generation_params' not in self.config['softbd']:
                 self.config['softbd']['generation_params'] = {}
             self.config['softbd']['generation_params']['gen1_n_select'] = int(gen1_n_select_override)
-            logger.info(f"运行时覆盖 gen1_n_select 为: {gen1_n_select_override}")
+            logger.info(f"Runtime override gen1_n_select is: {gen1_n_select_override}")
 
         if gen1_selection_mode_override is not None:
             if 'softbd' not in self.config:
@@ -349,48 +345,48 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             if 'generation_params' not in self.config['softbd']:
                 self.config['softbd']['generation_params'] = {}
             self.config['softbd']['generation_params']['gen1_selection_mode'] = str(gen1_selection_mode_override)
-            logger.info(f"运行时覆盖 gen1_selection_mode 为: {gen1_selection_mode_override}")
+            logger.info(f"Runtime override gen1_selection_mode to: {gen1_selection_mode_override}")
 
         if number_of_crossovers_override is not None:
             if 'crossover' not in self.config:
                 self.config['crossover'] = {}
             self.config['crossover']['number_of_crossovers'] = int(number_of_crossovers_override)
-            logger.info(f"运行时覆盖 number_of_crossovers 为: {number_of_crossovers_override}")
+            logger.info(f"Runtime override number_of_crossovers is: {number_of_crossovers_override}")
 
         if pair_min_tanimoto_override is not None:
             if 'crossover' not in self.config:
                 self.config['crossover'] = {}
             self.config['crossover']['pair_min_tanimoto'] = float(pair_min_tanimoto_override)
-            logger.info(f"运行时覆盖 pair_min_tanimoto 为: {pair_min_tanimoto_override}")
+            logger.info(f"Runtime override pair_min_tanimoto is: {pair_min_tanimoto_override}")
 
         if pair_max_tanimoto_override is not None:
             if 'crossover' not in self.config:
                 self.config['crossover'] = {}
             self.config['crossover']['pair_max_tanimoto'] = float(pair_max_tanimoto_override)
-            logger.info(f"运行时覆盖 pair_max_tanimoto 为: {pair_max_tanimoto_override}")
+            logger.info(f"Runtime override pair_max_tanimoto is: {pair_max_tanimoto_override}")
 
         if number_of_mutants_override is not None:
             if 'mutation' not in self.config:
                 self.config['mutation'] = {}
             self.config['mutation']['number_of_mutants'] = int(number_of_mutants_override)
-            logger.info(f"运行时覆盖 number_of_mutants 为: {number_of_mutants_override}")
+            logger.info(f"Runtime override number_of_mutants is: {number_of_mutants_override}")
 
 
 
-        # 应用最大代数覆盖
+        # Apply maximum algebraic coverage
         if max_generations_override is not None:
             if 'workflow' not in self.config:
                 self.config['workflow'] = {}
             self.config['workflow']['max_generations'] = max_generations_override
-            logger.info(f"运行时覆盖最大代数为: {max_generations_override}")
+            logger.info(f"The maximum number of generations covered during runtime is: {max_generations_override}")
 
-        # 应用随机种子覆盖
+        # Apply random seed override
         if seed_override is not None:
             if 'workflow' not in self.config:
                 self.config['workflow'] = {}
             self.config['workflow']['seed'] = seed_override
             
-            # 同时更新 softbd 和 docking 中的 seed 以保持一致性，如果它们存在
+            # Also update seeds in softbd and docking for consistency, if they exist
             if 'softbd' in self.config:
                 # softbd config usually doesn't have direct seed at root but we can set it if needed or rely on workflow seed
                 # softbd_generate.py reads from workflow seed or passed arg.
@@ -398,21 +394,21 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             if 'docking' in self.config:
                 self.config['docking']['seed'] = seed_override
             
-            logger.info(f"运行时覆盖随机种子为: {seed_override}")
+            logger.info(f"The runtime coverage random seed is: {seed_override}")
 
-        # 应用选择模式覆盖
+        # Apply selection mode override
         if selection_mode_override:
             if 'selection' not in self.config:
                 self.config['selection'] = {}
             self.config['selection']['selection_mode'] = selection_mode_override
-            logger.info(f"运行时覆盖选择模式为: {selection_mode_override}")
+            logger.info(f"The runtime coverage selection mode is: {selection_mode_override}")
 
         if enable_crowding_distance_override is not None:
             selection_cfg = self.config.setdefault('selection', {})
             enable_crowding = bool(enable_crowding_distance_override)
             selection_cfg.setdefault('ffhs_settings', {})['enable_crowding_distance'] = enable_crowding
             selection_cfg.setdefault('nsgaii_settings', {})['enable_crowding_distance'] = enable_crowding
-            logger.info(f"运行时覆盖 enable_crowding_distance 为: {enable_crowding}")
+            logger.info(f"Runtime override enable_crowding_distance is: {enable_crowding}")
 
         if qed_min_override is not None or sa_max_override is not None:
             selection_cfg = self.config.setdefault('selection', {})
@@ -420,21 +416,21 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             constraints = ffhs_cfg.setdefault('constraints', {})
             if qed_min_override is not None:
                 constraints['qed_min'] = float(qed_min_override)
-                logger.info(f"运行时覆盖 constraints.qed_min 为: {qed_min_override}")
+                logger.info(f"Runtime override constraints.qed_min is: {qed_min_override}")
             if sa_max_override is not None:
                 constraints['sa_max'] = float(sa_max_override)
-                logger.info(f"运行时覆盖 constraints.sa_max 为: {sa_max_override}")
+                logger.info(f"Runtime override constraints.sa_max is: {sa_max_override}")
 
         if docking_tool_override is not None:
             if 'docking' not in self.config:
                 self.config['docking'] = {}
             self.config['docking']['tool'] = str(docking_tool_override)
-            logger.info(f"运行时覆盖 docking.tool 为: {docking_tool_override}")
+            logger.info(f"Runtime override docking.tool is: {docking_tool_override}")
         if docking_exhaustiveness_override is not None:
             if 'docking' not in self.config:
                 self.config['docking'] = {}
             self.config['docking']['exhaustiveness'] = int(docking_exhaustiveness_override)
-            logger.info(f"运行时覆盖 docking.exhaustiveness 为: {docking_exhaustiveness_override}")
+            logger.info(f"Runtime override docking.exhaustiveness is: {docking_exhaustiveness_override}")
 
         self.run_params = {}
         self._setup_parameters_and_paths(receptor_name, output_dir_override)
@@ -442,7 +438,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             int(max_oracle_calls_override) if max_oracle_calls_override is not None else None
         )
         if self.max_oracle_calls is not None and self.max_oracle_calls <= 0:
-            raise ValueError("max_oracle_calls 必须是正整数")
+            raise ValueError("max_oracle_calls must be a positive integer")
         self.oracle_tracking_enabled = self.max_oracle_calls is not None
         self.oracle_success_calls = 0
         self.oracle_submit_calls = 0
@@ -455,7 +451,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         if self.oracle_tracking_enabled:
             self._initialize_oracle_logs()
             logger.info(
-                "Oracle 预算模式已启用: max_oracle_calls=%s, success_csv=%s, all_csv=%s",
+                "Oracle budget mode is enabled: max_oracle_calls=%s, success_csv=%s, all_csv=%s",
                 self.max_oracle_calls,
                 self.oracle_success_file_path,
                 self.oracle_all_file_path,
@@ -485,10 +481,10 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         self.placeholder_roots: Dict[int, str] = {}
         self.last_offspring_histories: Set[str] = set()
         self.last_offspring_smiles: Set[str] = set()
-        logger.info(f"SoftGA工作流初始化完成, 输出目录: {self.output_dir}")
-        logger.info(f"最大迭代代数: {self.max_generations}")
+        logger.info(f"SoftGAWorkflow initialization is completed, output directory: {self.output_dir}")
+        logger.info(f"Maximum number of iterations: {self.max_generations}")
 
-    def _load_config(self) -> dict:#加载配置文件
+    def _load_config(self) -> dict:#Load configuration file
         cfg_path = resolve_config_path(self.config_path, PROJECT_ROOT)
         self.config_path = str(cfg_path)
         return load_config(str(cfg_path), PROJECT_ROOT)
@@ -541,7 +537,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             return None
         progress = max(0.0, min(1.0, float(self.oracle_success_calls) / float(max_calls)))
         logger.info(
-            "第 %s 代: SoftBD 前缀策略改用 Oracle 进度 %.3f (%s/%s)",
+            "Generation %s: SoftBD prefix strategy changed to use Oracle progress %.3f (%s/%s)",
             generation,
             progress,
             self.oracle_success_calls,
@@ -564,7 +560,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         if remaining is None:
             return input_path, submitted_smiles
         if remaining <= 0:
-            logger.info("第 %s 代(%s): Oracle 预算已耗尽，跳过 docking。", generation, phase)
+            logger.info("Generation %s (%s): Oracle budget exhausted, skipping docking.", generation, phase)
             return input_path, []
         if len(submitted_smiles) <= remaining:
             return input_path, submitted_smiles
@@ -582,7 +578,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                 fout.write(line if line.endswith("\n") else f"{line}\n")
                 kept += 1
         logger.info(
-            "第 %s 代(%s): Oracle 预算截断 %s -> %s (remaining=%s)",
+            "Generation %s (%s): Oracle budget truncation %s -> %s (remaining=%s)",
             generation,
             phase,
             len(submitted_smiles),
@@ -720,10 +716,10 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         self._resolve_softbd_seed()
         self.enable_lineage_tracking = bool(workflow_config.get("enable_lineage_tracking", False))
         self.run_params["enable_lineage_tracking"] = self.enable_lineage_tracking
-        # 记录配置和根目录
+        # Record configuration and root directory
         self.run_params['config_file_path'] = self.config_path
         self.run_params['project_root'] = str(self.project_root)
-        # 确定输出目录
+        # Determine the output directory
         if output_dir_override:
             output_dir_name = output_dir_override
         else:
@@ -732,12 +728,12 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         self.run_params['base_output_dir'] = str(base_output_dir)
         self.receptor_name = str(receptor_name).strip()
         if not self.receptor_name:
-            raise ValueError("receptor_name 不能为空，请显式传入 --receptor")
+            raise ValueError("receptor_name cannot be empty, please explicitly pass in --receptor")
         self.output_dir = base_output_dir / self.receptor_name
         self.run_params['receptor_name'] = self.receptor_name
         self.run_params['run_specific_output_dir'] = str(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        # 加载工作流核心参数
+        # Load workflow core parameters
         self.max_generations = workflow_config.get('max_generations', 10)
         self.initial_population_file = workflow_config.get('initial_population_file')
         self.run_params['max_generations'] = self.max_generations
@@ -747,7 +743,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                 p = (self.project_root / p).resolve()
             self.initial_population_file = str(p)
         self.run_params['initial_population_file'] = self.initial_population_file
-        # 记录选择模式
+        # Record selection mode
         self.run_params['selection_mode'] = self._get_selection_mode()
 
     @staticmethod
@@ -759,7 +755,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         raw_mode = str(selection_config.get("selection_mode", "ffhs")).strip().lower()
         mode = self._normalize_selection_mode(raw_mode)
         if raw_mode not in {"ffhs", "nsgaii"}:
-            logger.warning(f"selection.selection_mode 非法: {raw_mode}，回退到 ffhs")
+            logger.warning(f"selection.selection_mode Illegal: {raw_mode}, fallback to ffhs")
         return mode
 
     def _get_selection_n_select(self, mode: str) -> int:
@@ -781,7 +777,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         softbd_cfg.pop('random_seed_bits', None)
         seed_mode_raw = str(softbd_cfg.get('seed_mode', 'workflow')).strip().lower()
         if seed_mode_raw not in {'workflow', 'random_per_run'}:
-            logger.warning(f"softbd.seed_mode 非法: {seed_mode_raw}，回退到 workflow")
+            logger.warning(f"softbd.seed_mode Illegal: {seed_mode_raw}, fall back to workflow")
             seed_mode_raw = 'workflow'
         softbd_cfg['seed_mode'] = seed_mode_raw
 
@@ -797,12 +793,12 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         self.run_params['softbd_random_seed_bits'] = self.softbd_random_seed_bits
         self.run_params['softbd_seed_effective'] = self.softbd_seed
         logger.info(
-            f"SoftBD seed 已确定: mode={self.softbd_seed_mode}, "
+            f"SoftBD seed Determined: mode={self.softbd_seed_mode},"
             f"random_seed_bits={self.softbd_random_seed_bits}, seed={self.softbd_seed}"
         )
 
     def _save_run_parameters(self):
-        """保存本次运行的完整参数快照。"""
+        """Save a complete parameter snapshot of this run."""
         snapshot_file_path = self.output_dir / "execution_config_snapshot.json"
         success = save_config_snapshot(
             original_config=self.config,
@@ -810,11 +806,11 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             output_file_path=str(snapshot_file_path)
         )
         if success:
-            logger.info(f"完整的执行配置快照已保存到: {snapshot_file_path}")
+            logger.info(f"The complete execution configuration snapshot has been saved to: {snapshot_file_path}")
         else:
-            logger.error("保存执行配置快照失败")
+            logger.error("Failed to save execution configuration snapshot")
     def _load_lineage_tracker(self) -> Dict[str, List[Dict]]:
-        """从磁盘加载既有的血统记录。"""
+        """Load existing lineage records from disk."""
         if not getattr(self, "enable_lineage_tracking", False):
             return {}
         if self.output_dir and hasattr(self, "output_dir"):
@@ -827,12 +823,12 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                     data = json.load(f)
                 if isinstance(data, dict):
                     return data
-                logger.warning("血统跟踪文件格式异常，已忽略原有记录。")
+                logger.warning("The format of the lineage tracking file is abnormal and the original records have been ignored.")
             except Exception as exc:
-                logger.warning(f"无法加载血统跟踪文件 {path}: {exc}")
+                logger.warning(f"Unable to load lineage tracking file {path}: {exc}")
         return {}
     def _save_lineage_tracker(self) -> None:
-        """将血统跟踪记录持久化到磁盘。"""
+        """Persist lineage tracking records to disk."""
         if not getattr(self, "enable_lineage_tracking", False):
             return
         if not self.lineage_tracker_path:
@@ -841,15 +837,15 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             with open(self.lineage_tracker_path, 'w', encoding='utf-8') as f:
                 json.dump(self.lineage_tracker, f, indent=2, ensure_ascii=False)
         except Exception as exc:
-            logger.error(f"保存血统跟踪文件失败: {exc}")
+            logger.error(f"Failed to save lineage tracking file: {exc}")
     def _write_jsonl(self, output_path: Path, entries: List[Dict]) -> None:
-        """将记录写入 JSONL 文件。"""
+        """Write records to a JSONL file."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, 'w', encoding='utf-8') as f:
             for item in entries:
                 f.write(json.dumps(item, ensure_ascii=False) + '\n')
     def _read_jsonl(self, input_path: Path) -> List[Dict]:
-        """读取 JSONL 文件并返回字典列表。"""
+        """Reads a JSONL file and returns a list of dictionaries."""
         if not input_path or not input_path.exists():
             return []
         entries: List[Dict] = []
@@ -862,12 +858,12 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                     try:
                         entries.append(json.loads(line))
                     except json.JSONDecodeError:
-                        logger.warning(f"无法解析血统记录: {line}")
+                        logger.warning(f"Unable to parse ancestry record: {line}")
         except Exception as exc:
-            logger.warning(f"读取血统文件 {input_path} 失败: {exc}")
+            logger.warning(f"Failed to read lineage file {input_path}: {exc}")
         return entries
     def _read_smiles_from_file(self, file_path: Path, first_column_only: bool = True) -> List[str]:
-        """读取SMILES文件，默认只返回第一列。"""
+        """Read SMILES files, only the first column is returned by default."""
         smiles: List[str] = []
         if not file_path or not file_path.exists():
             return smiles
@@ -882,11 +878,11 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                         continue
                     smiles.append(parts[0] if first_column_only else parts)
         except Exception as exc:
-            logger.warning(f"读取文件 {file_path} 时发生错误: {exc}")
+            logger.warning(f"An error occurred while reading file {file_path}: {exc}")
         return smiles
 
     def _update_lineage_tracker(self, lineage_entries: List[Dict]) -> None:
-        """更新内存中的血统跟踪数据并同步到磁盘。"""
+        """Update lineage tracking data in memory and sync to disk."""
         if not self.enable_lineage_tracking:
             return
         if not lineage_entries:
@@ -903,7 +899,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         self._save_lineage_tracker()
 
     def _record_initial_population(self, formatted_file: Path) -> None:
-        """记录初代种群的血统来源。"""
+        """Record the ancestry of the first generation population."""
         if not self.enable_lineage_tracking:
             return
         smiles_list = self._read_smiles_from_file(formatted_file)
@@ -932,7 +928,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             lineage_file = formatted_file.parent / "initial_population_lineage.jsonl"
             self._write_jsonl(lineage_file, entries)
             self._save_lineage_tracker()
-            logger.info(f"初代种群血统记录已保存到: {lineage_file}")
+            logger.info(f"The first generation population pedigree record has been saved to: {lineage_file}")
     def _short_hash(self, value: str) -> str:
         return hashlib.md5(value.encode('utf-8')).hexdigest()[:6]
     def _register_history(self, smiles: str, history: str) -> None:
@@ -1056,7 +1052,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         return mapping
 
     def _append_qed_sa_to_docked_file(self, docked_file: Path) -> bool:
-        """为 docked 文件补全 QED/SA 列（原地覆写）。"""
+        """Complete QED/SA columns for docked files (overwrite in place)."""
         path_obj = Path(docked_file)
         if not path_obj.exists() or self._count_molecules(str(path_obj)) == 0:
             return True
@@ -1068,11 +1064,9 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
 
     @staticmethod
     def _write_ranked_by_docking(input_file: Path, output_file: Path) -> bool:
-        """
-        将 docked 文件按 docking_score(第2列) 升序排序后写入新文件。
-        - 保留整行（包含 QED/SA 等列），只改变行顺序
-        - 无法解析 docking_score 的行会排到末尾
-        """
+        """         Sort the docked files in ascending order by docking_score (column 2) and write to the new file.
+        - Keep the entire row (including columns such as QED/SA) and only change the row order
+        - Lines that cannot parse docking_score will be queued to the end         """
         input_file = Path(input_file)
         output_file = Path(output_file)
         if not input_file.exists():
@@ -1091,7 +1085,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                         docking = float(parts[1])
                     except Exception:
                         docking = None
-                # 稳定排序：docking -> 原始顺序
+                # Stable sorting: docking -> original order
                 key = (0, docking, order) if docking is not None else (1, 0.0, order)
                 rows.append((key, line))
 
@@ -1163,16 +1157,14 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
     
 
     def _run_script(self, script_path: str, args: List[str]) -> bool:
-        """
-        统一的脚本执行函数，通过流式处理输出防止死锁，并增加超时保护。
+        """         Unified script execution functions, preventing deadlocks by streaming output, and adding timeout protection.
         
         Args:
-            script_path (str): 相对于项目根目录的脚本路径。
-            args (List[str]): 脚本的命令行参数列表。
+            script_path (str): The script path relative to the project root directory.
+            args (List[str]): List of command line arguments for the script.
             
         Returns:
-            bool: 脚本是否执行成功。
-        """
+            bool: Whether the script was executed successfully.         """
         full_script_path = self.project_root / script_path
         cmd = ['python', str(full_script_path)] + args
         logger.debug(f"Executing command: {' '.join(cmd)}")
@@ -1192,34 +1184,34 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                 close_fds=True
             ) as process:
                 
-                # 创建队列来从线程中接收输出
+                # Create a queue to receive output from the thread
                 q_stdout = queue.Queue()
                 q_stderr = queue.Queue()
 
-                # 创建并启动线程来实时读取输出
+                # Create and start threads to read output in real time
                 thread_stdout = threading.Thread(target=self._read_stream, args=(process.stdout, q_stdout))
                 thread_stderr = threading.Thread(target=self._read_stream, args=(process.stderr, q_stderr))
                 thread_stdout.start()
                 thread_stderr.start()
 
-                # 等待进程结束，设置超时
+                # Wait for the process to end and set a timeout
                 try:
-                    process.wait(timeout=3600)  # 1小时超时
+                    process.wait(timeout=3600)  # 1 hour timeout
                 except subprocess.TimeoutExpired:
                     logger.error(f"Script {script_path} timed out (1 hour). Terminating...")
-                    process.kill()  # 强制杀死进程
-                    # 再等待一小段时间确保线程能读取完最后的信息
+                    process.kill()  # Force kill process
+                    # Wait a short period of time to ensure that the thread can read the last information
                     thread_stdout.join(timeout=5)
                     thread_stderr.join(timeout=5)
-                    # 记录日志并返回失败
+                    # Log and return failure
                     self._log_subprocess_output(script_path, q_stdout, q_stderr, "after timeout")
                     return False
                 
-                # 进程正常结束后，等待读取线程完成
+                # After the process ends normally, wait for the reading thread to complete
                 thread_stdout.join()
                 thread_stderr.join()
 
-                # 收集并记录输出
+                # Collect and log output
                 stdout_str, stderr_str = self._log_subprocess_output(script_path, q_stdout, q_stderr, "final")
 
                 if process.returncode == 0:
@@ -1227,7 +1219,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                     return True
                 else:
                     logger.error(f"Script {script_path} failed with return code {process.returncode}.")
-                    # 在失败时，即使没有stderr，也记录stdout，可能包含线索
+                    # On failure, log stdout even if there is no stderr, may contain clues
                     if stderr_str:
                         logger.error(f"Error output (stderr):\n{stderr_str}")
                     if stdout_str:
@@ -1239,7 +1231,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             return False
 
     def _read_stream(self, stream, q: queue.Queue):
-        """实时读取流（stdout/stderr）并放入队列"""
+        """Read the stream (stdout/stderr) in real time and put it into the queue"""
         try:
             for line in iter(stream.readline, ''):
                 q.put(line)
@@ -1247,7 +1239,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             stream.close()
 
     def _log_subprocess_output(self, script_path: str, q_stdout: queue.Queue, q_stderr: queue.Queue, context: str) -> Tuple[str, str]:
-        """从队列中收集并记录子进程的输出"""
+        """Collect and log the output of child processes from the queue"""
         stdout_lines = []
         while not q_stdout.empty():
             stdout_lines.append(q_stdout.get_nowait())
@@ -1265,7 +1257,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         return stdout_str, stderr_str
 
     def _count_molecules(self, file_path: str) -> int:
-        """统计SMILES文件中的分子数量"""
+        """Count the number of molecules in a SMILES file"""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 count = sum(1 for line in f if line.strip())
@@ -1273,15 +1265,13 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         except FileNotFoundError:
             return 0
     def _remove_duplicates_from_smiles_file(self, input_file: str, output_file: str) -> int:
-        """
-        去除SMILES文件中的重复分子,并为每个分子添加唯一ID。
-        输出格式: SMILES  ligand_id_X
-        增加文件锁防护，避免并发访问冲突。
-        """
+        """         Remove duplicate molecules in SMILES files and add unique IDs to each molecule.
+        Output format: SMILES ligand_id_X
+        Add file lock protection to avoid concurrent access conflicts.         """
         import time
         import random
         
-        # 添加随机延迟，避免多进程同时访问文件
+        # Add random delays to avoid multiple processes accessing files at the same time
         time.sleep(random.uniform(0.1, 0.5))
         
         try:
@@ -1295,21 +1285,21 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                             unique_smiles.add(smiles)            
             unique_smiles_list = sorted(list(unique_smiles))            
             
-            # 使用临时文件写入，然后原子性重命名，避免写入冲突
+            # Use temporary files to write and then rename atomically to avoid write conflicts
             temp_output_file = output_file + f".tmp_{os.getpid()}_{int(time.time())}"
             with open(temp_output_file, 'w', encoding='utf-8') as f:
                 for i, smiles in enumerate(unique_smiles_list):
                     f.write(f"{smiles}\tligand_id_{i}\n")
             
-            # 原子性重命名
+            # Atomic renaming
             import shutil
             shutil.move(temp_output_file, output_file)
             
-            logger.info(f"去重完成: {len(unique_smiles_list)} 个独特分子保存到 {output_file}")
+            logger.info(f"Deduplication completed: {len(unique_smiles_list)} unique molecules saved to {output_file}")
             return len(unique_smiles_list)
         except Exception as e:
-            logger.error(f"去重过程中发生错误: {e}")
-            # 清理可能的临时文件
+            logger.error(f"An error occurred during deduplication: {e}")
+            # Clean possible temporary files
             temp_file = output_file + f".tmp_{os.getpid()}_{int(time.time())}"
             if os.path.exists(temp_file):
                 try:
@@ -1319,7 +1309,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             return 0
 
     def _extract_smiles_from_docked_file(self, docked_file: str, output_smiles_file: str) -> bool:
-        """从带对接分数的文件中提取纯SMILES,用于遗传操作或分解"""
+        """Extract pure SMILES from files with docking scores for genetic manipulation or decomposition"""
         try:
             with open(docked_file, 'r') as infile, open(output_smiles_file, 'w') as outfile:
                 for line in infile:
@@ -1329,7 +1319,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                         outfile.write(f"{smiles}\n")
             return True
         except Exception as e:
-            logger.error(f"从 {docked_file} 提取SMILES时出错: {e}")
+            logger.error(f"Error extracting SMILES from {docked_file}: {e}")
             return False
 
     def _execute_ga_stage(
@@ -1342,10 +1332,10 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         raw_lineage_file: Path,
         filtered_lineage_file: Path
     ) -> Tuple[bool, Optional[Path]]:
-        """辅助函数，用于运行一个GA阶段（如交叉）及其后续的过滤，并返回(是否成功, 过滤后的血统文件路径)。"""
-        logger.info(f"开始执行 {ga_op_name}...")
+        """Auxiliary function used to run a GA stage (such as crossover) and its subsequent filtering, and return (whether successful, filtered lineage file path)."""
+        logger.info(f"Start executing {ga_op_name}...")
         
-        # 运行GA操作
+        # Run GA operations
         ga_args = [
             '--smiles_file', input_pool_file,
             '--output_file', str(raw_output_file),
@@ -1371,30 +1361,30 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
 
         ga_succeeded = self._run_script(ga_script, ga_args)
         if not ga_succeeded:
-            logger.error(f"'{ga_op_name}' 脚本执行失败。")
+            logger.error(f"'{ga_op_name}' Script execution failed.")
             return False, None
 
-        # 运行过滤器
+        # run filter
         filter_succeeded = self._run_script('utils/filter.py', [
             '--smiles_file', str(raw_output_file),
             '--output_file', str(filtered_output_file),
             '--config_file', self.config_path,
         ])
         if not filter_succeeded:
-            logger.error(f"'{ga_op_name}' 过滤失败。")
+            logger.error(f"'{ga_op_name}' Filtering failed.")
             return False, None
 
         if not self.enable_lineage_tracking:
-            logger.info(f"'{ga_op_name}' 操作完成, 生成 {self._count_molecules(str(filtered_output_file))} 个过滤后的分子。")
+            logger.info(f"'{ga_op_name}' The operation is complete, generating {self._count_molecules(str(filtered_output_file))} filtered molecules.")
             return True, None
 
         filtered_entries = self._filter_lineage_entries(raw_lineage_file, filtered_output_file)
         self._write_jsonl(filtered_lineage_file, filtered_entries)
-        logger.info(f"'{ga_op_name}' 操作完成, 生成 {self._count_molecules(str(filtered_output_file))} 个过滤后的分子。")
+        logger.info(f"'{ga_op_name}' The operation is complete, generating {self._count_molecules(str(filtered_output_file))} filtered molecules.")
         return True, filtered_lineage_file
 
     def _filter_lineage_entries(self, raw_lineage_file: Path, filtered_output_file: Path) -> List[Dict]:
-        """根据过滤后的SMILES保留有效的血统记录。"""
+        """Keep valid ancestry records based on filtered SMILES."""
         raw_entries = self._read_jsonl(raw_lineage_file)
         if not raw_entries:
             return []
@@ -1413,7 +1403,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         return kept_entries
 
     def _combine_files(self, file_list: List[str], output_file: str) -> bool:
-        """合并多个SMILES文件到一个文件"""
+        """Merge multiple SMILES files into one file"""
         try:
             with open(output_file, 'w') as outf:
                 for file_path in file_list:
@@ -1426,10 +1416,10 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                                 outf.write(line + '\n')
             return True
         except Exception as e:
-            logger.error(f"合并文件时发生错误: {e}")
+            logger.error(f"An error occurred while merging files: {e}")
             return False
     def _append_qed_sa_to_file(self, file_path: Path) -> bool:
-        """为只有 SMILES 的文件添加 metrics 列 (qed, sa)，不包含 docking_score。"""
+        """Add metrics column (qed, sa) for files with only SMILES, excluding docking_score."""
         path_obj = Path(file_path)
         if not path_obj.exists() or self._count_molecules(str(path_obj)) == 0:
             return True
@@ -1445,33 +1435,33 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                         continue
                     
                     smiles = parts[0]
-                    # 计算 metrics (docking_score 传入 None，我们不使用它)
+                    # Compute metrics (docking_score is passed in None, we don't use it)
                     metrics = self._compute_metrics(smiles, None)
                     
-                    # 格式化输出: SMILES qed sa
+                    # Formatted output: SMILES qed sa
                     qed_str = f"{metrics['qed']:.4f}" if metrics['qed'] is not None else "0.0000"
                     sa_str = f"{metrics['sa']:.4f}" if metrics['sa'] is not None else "10.0000"
                     
                     new_line = f"{smiles}\t{qed_str}\t{sa_str}"
                     processed_lines.append(new_line)
             
-            # 写入临时文件
+            # Write to temporary file
             with open(temp_file, 'w', encoding='utf-8') as f:
                 for line in processed_lines:
                     f.write(line + '\n')
             
-            # 替换原文件
+            # Replace original file
             shutil.move(str(temp_file), str(path_obj))
             return True
             
         except Exception as e:
-            logger.error(f"处理文件 {file_path} 添加指标时出错: {e}")
+            logger.error(f"Error adding indicator while processing file {file_path}: {e}")
             if temp_file.exists():
                 os.remove(temp_file)
             return False
 
     def _filter_smiles_file_by_constraints(self, file_path: Path, qed_min: float, sa_max: float) -> Tuple[bool, int, int]:
-        """按 QED/SA 约束过滤分子文件（保留原始行格式）。"""
+        """Filter molecule files by QED/SA constraints (preserving original row formatting)."""
         path_obj = Path(file_path)
         if not path_obj.exists() or self._count_molecules(str(path_obj)) == 0:
             return True, 0, 0
@@ -1509,13 +1499,13 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             return True, total_count, kept_count
 
         except Exception as e:
-            logger.error(f"约束过滤文件 {file_path} 时出错: {e}")
+            logger.error(f"Error while constraining filter file {file_path}: {e}")
             if temp_file.exists():
                 os.remove(temp_file)
             return False, total_count, kept_count
 
     def _count_smiles_passing_constraints(self, file_path: Path, qed_min: float, sa_max: float) -> Tuple[int, int]:
-        """仅统计文件中通过 QED/SA 约束的分子数量，不修改文件内容。"""
+        """Only the number of molecules constrained by QED/SA in the file is counted and the file content is not modified."""
         path_obj = Path(file_path)
         if not path_obj.exists() or self._count_molecules(str(path_obj)) == 0:
             return 0, 0
@@ -1541,37 +1531,35 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                     if qed >= qed_min and sa <= sa_max:
                         kept_count += 1
         except Exception as e:
-            logger.warning(f"统计约束通过数量时出错 ({file_path}): {e}")
+            logger.warning(f"Error when statistical constraint passes quantity ({file_path}): {e}")
         return total_count, kept_count
 
     def run_ga_operations(self, parent_smiles_file: str, softbd_generated_file: Optional[str], generation: int) -> Optional[Tuple[str, str, Optional[str], Optional[str]]]:
-        """
-        串行执行遗传算法操作（交叉和突变）以避免死锁。
+        """         Perform genetic algorithm operations (crossover and mutation) serially to avoid deadlocks.
         
         Args:
-            parent_smiles_file (str): 父代SMILES文件路径。
-            softbd_generated_file (Optional[str]): SoftBD 生成的SMILES文件路径。
-            generation (int): 当前代数。
+            parent_smiles_file (str): Parent SMILES file path.
+            softbd_generated_file (Optional[str]): SMILES file path generated by SoftBD.
+            generation (int): Current generation.
             
         Returns:
-            Optional[Tuple[str, str, Optional[str], Optional[str]]]: 
-                成功则返回 (交叉后代文件, 突变后代文件, 交叉血统文件, 突变血统文件)。
-        """
-        logger.info(f"第 {generation} 代: 开始串行执行遗传算法操作...")
+            Optional[Tuple[str, str, Optional[str], Optional[str]]]:
+                Returns (cross descendant file, mutation descendant file, cross lineage file, mutation lineage file) on success.         """
+        logger.info(f"Generation {generation}: Start serial execution of genetic algorithm operations...")
         gen_dir = self.output_dir / f"generation_{generation}"
 
-        # 1. 合并父代和 SoftBD 产出，作为 GA 操作输入
+        # 1. Merge parent and SoftBD outputs as GA operation input
         ga_input_pool_file = gen_dir / "ga_input_pool.smi"
         files_to_combine = [parent_smiles_file]
         if softbd_generated_file:
             files_to_combine.append(softbd_generated_file)
         
         if not self._combine_files(files_to_combine, str(ga_input_pool_file)):
-            logger.error(f"第 {generation} 代: 合并父代和 SoftBD 产出失败。")
+            logger.error(f"Generation {generation}: Merging parent and SoftBD output failed.")
             return None
-        logger.info(f"第 {generation} 代: GA操作输入池已创建,共 {self._count_molecules(str(ga_input_pool_file))} 个分子。")
+        logger.info(f"Generation {generation}: The GA operation input pool has been created, with a total of {self._count_molecules(str(ga_input_pool_file))} molecules.")
 
-        # 2. 串行执行交叉和突变以避免死锁
+        # 2. Execute crossovers and mutations serially to avoid deadlocks
         crossover_raw_file = gen_dir / "crossover_raw.smi"
         crossover_filtered_file = gen_dir / "crossover_filtered.smi"
         crossover_raw_lineage = gen_dir / "crossover_raw_lineage.jsonl"
@@ -1581,41 +1569,41 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         mutation_raw_lineage = gen_dir / "mutation_raw_lineage.jsonl"
         mutation_filtered_lineage = gen_dir / "mutation_filtered_lineage.jsonl"
 
-        # 执行交叉操作
-        logger.info(f"第 {generation} 代: 开始交叉操作...")
+        # Perform crossover operation
+        logger.info(f"Generation {generation}: Starting crossover operation...")
         crossover_ok, crossover_lineage_path = self._execute_ga_stage(
-            "交叉", 'crossover.py',
+            "cross", 'crossover.py',
             str(ga_input_pool_file), crossover_raw_file, crossover_filtered_file,
             crossover_raw_lineage, crossover_filtered_lineage
         )
         
         if not crossover_ok:
-            logger.error(f"第 {generation} 代: 交叉操作失败。")
+            logger.error(f"Generation {generation}: Crossover operation failed.")
             return None
             
-        # debug 模式才为中间文件补全 QED/SA，cleanup 模式下跳过以减少写盘
+        # Only use debug mode to complete QED/SA for intermediate files, and skip it in cleanup mode to reduce disk writing.
         if not self.cleanup_intermediate_files:
             self._append_qed_sa_to_file(crossover_raw_file)
             self._append_qed_sa_to_file(crossover_filtered_file)
 
-        # 执行变异操作
-        logger.info(f"第 {generation} 代: 开始变异操作...")
+        # Perform mutation operations
+        logger.info(f"Generation {generation}: Start mutation operation...")
         mutation_ok, mutation_lineage_path = self._execute_ga_stage(
-            "突变", 'mutation.py',
+            "mutation", 'mutation.py',
             str(ga_input_pool_file), mutation_raw_file, mutation_filtered_file,
             mutation_raw_lineage, mutation_filtered_lineage
         )
         
         if not mutation_ok:
-            logger.error(f"第 {generation} 代: 变异操作失败。")
+            logger.error(f"Generation {generation}: Mutation operation failed.")
             return None
             
-        # debug 模式才为中间文件补全 QED/SA，cleanup 模式下跳过以减少写盘
+        # Only use debug mode to complete QED/SA for intermediate files, and skip it in cleanup mode to reduce disk writing.
         if not self.cleanup_intermediate_files:
             self._append_qed_sa_to_file(mutation_raw_file)
             self._append_qed_sa_to_file(mutation_filtered_file)
 
-        logger.info(f"第 {generation} 代: 交叉和变异操作串行完成。")
+        logger.info(f"Generation {generation}: Crossover and mutation operations are completed serially.")
         return (
             str(crossover_filtered_file),
             str(mutation_filtered_file),
@@ -1631,29 +1619,27 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         crossover_lineage_file: Optional[str] = None,
         mutation_lineage_file: Optional[str] = None
     ) -> Optional[Tuple[str, Optional[str]]]:
-        """
-        执行子代种群的评估（对接），并生成血统记录。
+        """         Perform evaluation (docking) of progeny populations and generate lineage records.
         
         Args:
-            crossover_file (str): 交叉后代文件路径。
-            mutation_file (str): 突变后代文件路径。
-            generation (int): 当前代数。
-            crossover_lineage_file (Optional[str]): 交叉产出对应的血统文件。
-            mutation_lineage_file (Optional[str]): 突变产出对应的血统文件。
+            crossover_file (str): Crossover descendant file path.
+            mutation_file (str): Path to mutation offspring file.
+            generation (int): Current generation.
+            crossover_lineage_file (Optional[str]): The lineage file corresponding to the crossover output.
+            mutation_lineage_file (Optional[str]): The lineage file corresponding to the mutation output.
             
         Returns:
-            Optional[Tuple[str, Optional[str]]]: (子代对接结果文件路径, 血统记录文件路径)。
-        """
-        logger.info(f"第 {generation} 代: 开始子代评估...")
+            Optional[Tuple[str, Optional[str]]]: (Progeny docking result file path, pedigree record file path).         """
+        logger.info(f"Generation {generation}: Start descendant evaluation...")
         gen_dir = self.output_dir / f"generation_{generation}"
 
-        # 1. 合并交叉和突变结果
+        # 1. Merge crossover and mutation results
         offspring_raw_file = gen_dir / "offspring_combined_raw.smi"
         if not self._combine_files([crossover_file, mutation_file], str(offspring_raw_file)):
-            logger.error(f"第 {generation} 代: 子代合并失败。")
+            logger.error(f"Generation {generation}: Failed to merge offspring.")
             return None
         
-        # 2. 对子代进行去重和格式化（为对接做准备）
+        # 2. Deduplicate and format the children (preparing for docking)
         offspring_formatted_file = gen_dir / "offspring_formatted_for_docking.smi"
         offspring_count = self._remove_duplicates_from_smiles_file(
             str(offspring_raw_file), 
@@ -1670,12 +1656,12 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                 Path(mutation_file), qed_min, sa_max
             )
             logger.info(
-                f"第 {generation} 代: 交叉产物 docking前约束过滤统计，保留 {crossover_kept}/{crossover_total} 个分子 "
-                f"(QED>={qed_min}, SA<={sa_max})。"
+                f"Generation {generation}: constrained filtering statistics of cross products before docking, retaining {crossover_kept}/{crossover_total} molecules"
+                f"(QED>={qed_min}, SA<={sa_max})."
             )
             logger.info(
-                f"第 {generation} 代: 突变产物 docking前约束过滤统计，保留 {mutation_kept}/{mutation_total} 个分子 "
-                f"(QED>={qed_min}, SA<={sa_max})。"
+                f"Generation {generation}: Constraint filtering statistics of mutation products before docking, retaining {mutation_kept}/{mutation_total} molecules"
+                f"(QED>={qed_min}, SA<={sa_max})."
             )
 
             constraint_filter_ok, before_filter_count, offspring_count = self._filter_smiles_file_by_constraints(
@@ -1684,21 +1670,21 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                 sa_max
             )
             if not constraint_filter_ok:
-                logger.error(f"第 {generation} 代: 子代约束过滤失败。")
+                logger.error(f"Generation {generation}: Descendant constraint filtering failed.")
                 return None
             logger.info(
-                f"第 {generation} 代: docking前约束过滤完成，保留 {offspring_count}/{before_filter_count} 个分子 "
-                f"(QED>={qed_min}, SA<={sa_max})。"
+                f"Generation {generation}: Constraint filtering before docking is completed, retaining {offspring_count}/{before_filter_count} molecules"
+                f"(QED>={qed_min}, SA<={sa_max})."
             )
         else:
-            logger.info(f"第 {generation} 代: selection_mode=nsgaii，跳过 docking前 QED/SA 约束过滤。")
+            logger.info(f"Generation {generation}: selection_mode=nsgaii, skip QED/SA constraint filtering before docking.")
         offspring_lineage_file = gen_dir / "offspring_lineage.jsonl" if self.enable_lineage_tracking else None
         if offspring_count == 0:
             if selection_mode == "ffhs":
-                logger.warning(f"第 {generation} 代: 经过去重与约束过滤后，无有效子代分子。")
+                logger.warning(f"Generation {generation}: After deduplication and constraint filtering, there are no valid descendant molecules.")
             else:
-                logger.warning(f"第 {generation} 代: 经过去重后，无有效子代分子。")
-            # 创建一个空的对接文件和血统文件，避免后续步骤报错
+                logger.warning(f"Generation {generation}: After deduplication, there are no valid descendant molecules.")
+            # Create an empty docking file and lineage file to avoid errors in subsequent steps.
             offspring_docked_file = gen_dir / "offspring_docked.smi"
             open(offspring_docked_file, 'a').close()
             self.last_offspring_histories = set()
@@ -1722,7 +1708,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             self._write_jsonl(offspring_lineage_file, offspring_lineage_entries)
             self._update_lineage_tracker(offspring_lineage_entries)
 
-        logger.info(f"子代格式化完成: 共 {offspring_count} 个独特分子准备对接。")
+        logger.info(f"Progeny formatting complete: A total of {offspring_count} unique molecules ready for docking.")
 
         offspring_docked_file = gen_dir / "offspring_docked.smi"
         docking_succeeded, submitted_smiles = self._run_docking_and_record_oracle(
@@ -1733,25 +1719,25 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             phase="offspring",
         )
         if self.oracle_tracking_enabled and not submitted_smiles:
-            logger.warning(f"第 {generation} 代: Oracle 预算剩余额度为 0，本代跳过子代 docking。")
+            logger.warning(f"Generation {generation}: The remaining Oracle budget is 0, and this generation skips child generation docking.")
             open(offspring_docked_file, 'a').close()
             self.last_offspring_histories = set()
             self.last_offspring_smiles = set()
             return str(offspring_docked_file), str(offspring_lineage_file) if offspring_lineage_file else None
 
         if not docking_succeeded:
-            logger.error(f"第 {generation} 代: 子代对接失败。")
+            logger.error(f"Generation {generation}: Failed to connect offspring.")
             return None
 
         docked_count = self._count_molecules(str(offspring_docked_file))
-        logger.info(f"第 {generation} 代: 子代评估完成，{docked_count} 个分子已对接。")
+        logger.info(f"Passage {generation}: Progeny evaluation completed, {docked_count} molecules have been docked.")
 
         offspring_mapping = self._ingest_population_metrics(offspring_docked_file, generation, mark_active=False)
         self.last_offspring_histories = set(offspring_mapping.values())
         self.last_offspring_smiles = set(offspring_mapping.keys())
         if not self.cleanup_intermediate_files:
             if not self._append_qed_sa_to_docked_file(offspring_docked_file):
-                logger.error(f"第 {generation} 代: 子代QED/SA补全失败。")
+                logger.error(f"Generation {generation}: QED/SA completion of the descendant failed.")
                 return None
 
         return str(offspring_docked_file), str(offspring_lineage_file) if offspring_lineage_file else None
@@ -1762,7 +1748,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         crossover_entries: List[Dict],
         mutation_entries: List[Dict]
     ) -> List[Dict]:
-        """合并交叉与突变的血统记录，并对齐到去重后的子代集合。"""
+        """Merge the cross and mutated lineage records and align them to the deduplicated progeny set."""
         lineage_map: Dict[str, List[Dict]] = {}
         for entry in crossover_entries + mutation_entries:
             child = entry.get("child")
@@ -1795,7 +1781,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             })
         return lineage_entries
     def _save_next_generation_lineage(self, generation: int, next_parents_file: str, offspring_lineage_file: Optional[str]) -> None:
-        """保存下一代父代的血统信息，便于追踪分子来源。"""
+        """Preserve the ancestry information of the next generation’s parents to facilitate tracing the source of molecules."""
         if not self.enable_lineage_tracking:
             return
         if not next_parents_file:
@@ -1828,18 +1814,16 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         self._write_jsonl(output_path, records)
 
     def run_selection(self, parent_docked_file: str, offspring_docked_file: str, generation: int) -> Optional[str]:
-        """
-        执行选择操作，从父代和子代中选出下一代。
+        """         Perform a selection operation to select the next generation from its parents and children.
         
         Args:
-            parent_docked_file (str): 父代对接结果文件路径。
-            offspring_docked_file (str): 子代对接结果文件路径。
-            generation (int): 当前代数。
+            parent_docked_file (str): Parent docking result file path.
+            offspring_docked_file (str): Offspring docking result file path.
+            generation (int): Current generation.
             
         Returns:
-            Optional[str]: 成功则返回下一代父代文件路径,失败则返回None。
-        """
-        logger.info(f"第 {generation} 代: 开始选择操作...")
+            Optional[str]: Returns the next generation parent file path if successful, and None if failed.         """
+        logger.info(f"Generation {generation}: Starting selection operation...")
         next_parents_file = self.output_dir / f"generation_{generation+1}" / "initial_population_docked.smi"
         next_parents_file.parent.mkdir(exist_ok=True)
 
@@ -1865,27 +1849,25 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         selection_succeeded = self._run_script('selection.py', selection_args)
 
         if not selection_succeeded or self._count_molecules(str(next_parents_file)) == 0:
-            logger.error(f"第 {generation} 代: 选择操作失败或未选出任何分子。")
+            logger.error(f"Generation {generation}: The selection operation failed or no molecules were selected.")
             return None
         
         selected_count = self._count_molecules(str(next_parents_file))
-        logger.info(f"选择操作完成 ({selection_mode.upper()}): 选出 {selected_count} 个分子作为下一代父代。")
+        logger.info(f"Selection operation completed ({selection_mode.upper()}): {selected_count} molecules are selected as the next generation parents.")
         
         return str(next_parents_file)
 
     def run_selected_population_evaluation(self, selected_parents_file: str, generation: int) -> bool:
-        """
-        对选择后的精英种群（下一代父代）进行评分分析        
+        """         Perform score analysis on the selected elite population (parents of the next generation)
         Args:
-            selected_parents_file (str): 选择后的下一代父代文件路径
-            generation (int): 当前代数            
+            selected_parents_file (str): Selected next generation parent file path
+            generation (int): current generation
         Returns:
-            bool: 评分分析是否成功
-        """
+            bool: whether the score analysis was successful         """
         if self.cleanup_intermediate_files:
             return True
 
-        logger.info(f"第 {generation} 代: 开始对选择后的精英种群进行评分分析")
+        logger.info(f"Generation {generation}: Start scoring analysis of the selected elite population")
         
         gen_dir = self.output_dir / f"generation_{generation}"
         scoring_report_file = gen_dir / f"generation_{generation}_evaluation.txt"
@@ -1901,47 +1883,45 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
 
         scoring_succeeded = self._run_script('utils/scoring.py', scoring_args)
         if scoring_succeeded:
-            logger.info(f"第 {generation} 代: 精英种群评分分析完成，报告保存到 {scoring_report_file}")
+            logger.info(f"Generation {generation}: Elite population score analysis is completed and the report is saved to {scoring_report_file}")
         else:
-            logger.warning(f"第 {generation} 代: 精英种群评分分析失败，但不影响主流程")            
+            logger.warning(f"Generation {generation}: Elite population score analysis failed, but it does not affect the main process")            
         return scoring_succeeded
 
     def run_complete_workflow(self):
-        """
-        执行完整的SoftGA工作流。
-        """
+        """         Execute the complete SoftGA workflow.         """
         import time
         from datetime import timedelta
         
         start_time = time.time()
-        logger.info(f"开始执行完整的SoftGA工作流程 (输出目录: {self.output_dir})")
+        logger.info(f"Start executing the complete SoftGA workflow (output directory: {self.output_dir})")
         
-        # 第0步：初代种群处理
+        # Step 0: Primary population processing
         current_parents_docked_file = self.run_initial_generation()
         if not current_parents_docked_file:
-            logger.error("初代种群处理失败，工作流终止。")
+            logger.error("The initial generation population processing failed and the workflow was terminated.")
             return False
         
-        logger.info(f"初代种群处理成功，结果文件: {current_parents_docked_file}")
+        logger.info(f"The first generation population processing was successful, result file: {current_parents_docked_file}")
 
-        # 开始迭代
+        # Start iterating
         for generation in range(1, self.max_generations + 1):
             if self._oracle_budget_reached():
                 logger.info(
-                    "Oracle 预算已达标 (%s/%s)，停止后续代。",
+                    "Oracle budget has been reached (%s/%s) and subsequent generations are stopped.",
                     self.oracle_success_calls,
                     self.max_oracle_calls,
                 )
                 break
             next_parents_file = self.run_generation_step(generation, current_parents_docked_file)
             if not next_parents_file:
-                logger.error(f"第 {generation} 代处理失败，工作流终止。")
+                logger.error(f"Generation {generation} failed and the workflow terminated.")
                 return False
             current_parents_docked_file = next_parents_file
 
             if self._oracle_budget_reached():
                 logger.info(
-                    "第 %s 代完成后 Oracle 预算达标 (%s/%s)，提前收敛。",
+                    "After the completion of the %s generation, the Oracle budget reaches the target (%s/%s) and converges early.",
                     generation,
                     self.oracle_success_calls,
                     self.max_oracle_calls,
@@ -1954,17 +1934,17 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         budget_unmet = self.oracle_tracking_enabled and not self._oracle_budget_reached()
         if budget_unmet:
             logger.error(
-                "Oracle 预算未达标: success_calls=%s < max_oracle_calls=%s",
+                "Oracle budget not met: success_calls=%s < max_oracle_calls=%s",
                 self.oracle_success_calls,
                 self.max_oracle_calls,
             )
         logger.info("=" * 60)
-        logger.info("SoftGA工作流程全部完成!")
-        logger.info(f"最终优化种群保存在: {current_parents_docked_file}")
-        logger.info(f"本次优化总耗时: {total_duration}")
+        logger.info("The SoftGA workflow is all completed!")
+        logger.info(f"The final optimized population is saved in: {current_parents_docked_file}")
+        logger.info(f"Total time spent on this optimization: {total_duration}")
         if self.oracle_tracking_enabled:
             logger.info(
-                "Oracle 计数: success_calls=%s, submit_calls=%s, max_oracle_calls=%s",
+                "Oracle count: success_calls=%s, submit_calls=%s, max_oracle_calls=%s",
                 self.oracle_success_calls,
                 self.oracle_submit_calls,
                 self.max_oracle_calls,
@@ -1977,43 +1957,41 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                 ["--run_dir", str(self.output_dir)],
             )
             if not ok:
-                logger.warning("Top1 曲线绘图失败，但不影响主流程")
+                logger.warning("Top1 curve drawing fails, but does not affect the main process")
         if self.cleanup_intermediate_files:
             self._prune_output_to_pop_only()
 
         return not budget_unmet
 
     def run_initial_generation(self) -> Optional[str]:
-        """
-        执行初代种群的处理，包括去重、格式化和对接。
+        """         Perform processing of primary populations, including deduplication, formatting, and docking.
         
         Returns:
-            Optional[str]: 成功则返回初代种群对接结果文件的路径，失败则返回None。
-        """
-        logger.info("开始处理初代种群 (Generation 0)...")
+            Optional[str]: Returns the path to the first-generation population docking result file if successful, and None if failed.         """
+        logger.info("Start processing the first generation population (Generation 0)...")
         
         gen_dir = self.output_dir / "generation_0"
         gen_dir.mkdir(exist_ok=True)
         
-        # 1. 检查初始种群文件是否存在
+        # 1. Check whether the initial population file exists
         if not Path(self.initial_population_file).exists():
-            logger.error(f"初始种群文件未找到: {self.initial_population_file}")
+            logger.error(f"Initial population file not found: {self.initial_population_file}")
             return None
         
-        # 2. 去重并格式化初始种群
+        # 2. Remove duplicates and format the initial population
         initial_formatted_file = gen_dir / "initial_population_formatted.smi"
         unique_count = self._remove_duplicates_from_smiles_file(
             self.initial_population_file, 
             str(initial_formatted_file)
         )
         if unique_count == 0:
-            logger.error("初始种群文件为空或处理失败。")
+            logger.error("The initial population file is empty or processing failed.")
             return None
 
-        # 记录初代种群血统信息
+        # Record the ancestry information of the first generation population
         self._record_initial_population(initial_formatted_file)
         
-        # 3. 对初代种群进行对接
+        # 3. Docking the primary population
         initial_docked_file = gen_dir / "initial_population_docked.smi"
         docking_succeeded, submitted_smiles = self._run_docking_and_record_oracle(
             initial_formatted_file,
@@ -2023,37 +2001,35 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             phase="initial",
         )
         if self.oracle_tracking_enabled and not submitted_smiles:
-            logger.error("初代种群在 Oracle 预算限制下没有可对接分子。")
+            logger.error("The primary population has no dockable molecules within the Oracle budget constraints.")
             return None
         docked_count = self._count_molecules(str(initial_docked_file))
         if not docking_succeeded or docked_count == 0:
-            logger.error("初代种群对接失败或未生成任何有效对接结果。")
+            logger.error("The docking of the primary population failed or no valid docking results were generated.")
             return None
         mapping = self._ingest_population_metrics(initial_docked_file, generation=0, mark_active=True)
         self._mark_histories_active(set(mapping.values()), generation=0)
         if not self.cleanup_intermediate_files:
             if not self._append_qed_sa_to_docked_file(initial_docked_file):
-                logger.error("初代种群QED/SA补全失败，工作流终止。")
+                logger.error("The first-generation population QED/SA completion failed and the workflow was terminated.")
                 return None
             ranked_file = initial_docked_file.with_name("initial_population_ranked.smi")
             if not self._write_ranked_by_docking(initial_docked_file, ranked_file):
-                logger.warning(f"初代种群: initial_population_ranked.smi 写入失败: {ranked_file}")
+                logger.warning(f"Initial population: initial_population_ranked.smi Writing failure: {ranked_file}")
         
-        logger.info(f"初代种群对接完成: {docked_count} 个分子已评分。")
+        logger.info(f"The first generation population docking is completed: {docked_count} molecules have been scored.")
         return str(initial_docked_file)
 
     def run_softbd_process(self, parent_smiles_file: str, generation: int) -> Optional[str]:
-        """
-        运行 SoftBD 生成流程。
+        """         Run the SoftBD build process.
         
         Args:
-            parent_smiles_file (str): 父代 SMILES 文件路径。
-            generation (int): 当前代数。
+            parent_smiles_file (str): Parent SMILES file path.
+            generation (int): Current generation.
             
         Returns:
-            Optional[str]: 生成分子结果文件路径。
-        """
-        logger.info(f"第 {generation} 代: 开始 SoftBD 生成流程...")
+            Optional[str]: Generate molecular result file path.         """
+        logger.info(f"Generation {generation}: Starting SoftBD generation process...")
         gen_dir = self.output_dir / f"generation_{generation}"
         gen_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2083,15 +2059,15 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             return None
 
         generated_count = self._count_molecules(str(output_file))
-        logger.info(f"第 {generation} 代: SoftBD 生成完成，产出 {generated_count} 个新分子。")
+        logger.info(f"Generation {generation}: SoftBD generation is completed and {generated_count} new molecules are produced.")
         
-        # 注册历史记录 (兼容原有血统追踪)
+        # Registration history (compatible with original lineage tracking)
         softbd_smiles = self._read_smiles_from_file(output_file)
         placeholder_root = self._create_generation_placeholder_root(generation)
         for smi in softbd_smiles:
             if smi in self.smiles_to_history:
                 continue
-            # 使用 SOFTBD 前缀区分
+            # Use SOFTBD prefix to distinguish
             op_token = f"SOFTBD-{generation}-{self._short_hash(smi)}"
             history = f"{placeholder_root}|{op_token}"
             self._register_history(smi, history)
@@ -2100,30 +2076,28 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         return str(output_file)
 
     def run_generation_step(self, generation: int, current_parents_docked_file: str):
-        """
-        执行单代SoftGA的完整流程。
-        """
-        logger.info(f"========== 开始第 {generation} 代进化 ==========")
+        """         Execute the complete process of a single generation of SoftGA.         """
+        logger.info(f"========== Start generation {generation} evolution ==========")
         gen_dir = self.output_dir / f"generation_{generation}"
         gen_dir.mkdir(exist_ok=True)
-        # 1. 从父代对接文件中提取纯SMILES
+        # 1. Extract pure SMILES from parent docking file
         parent_smiles_file = gen_dir / "current_parent_smiles.smi"
         if not self._extract_smiles_from_docked_file(current_parents_docked_file, str(parent_smiles_file)):
-            logger.error(f"第{generation}代: 无法从父代文件提取SMILES,工作流终止")
+            logger.error(f"Generation {generation}: Unable to extract SMILES from parent file, workflow terminated")
             return None
 
-        # 2. SoftBD 生成
+        # 2. SoftBD generation
         softbd_generated_file = self.run_softbd_process(str(parent_smiles_file), generation)
 
-        # 3. 遗传操作
+        # 3. Genetic manipulation
         ga_children_files = self.run_ga_operations(str(parent_smiles_file), softbd_generated_file, generation)
         if not ga_children_files:
-            logger.error(f"第{generation}代: 遗传操作失败，工作流终止。")
+            logger.error(f"Generation {generation}: The genetic operation failed and the workflow was terminated.")
             return None
         
         crossover_file, mutation_file, crossover_lineage, mutation_lineage = ga_children_files
 
-        # 4. 子代评估（对接，同时生成血统记录）
+        # 4. Progeny evaluation (docking, generating pedigree records at the same time)
         offspring_result = self.run_offspring_evaluation(
             crossover_file,
             mutation_file,
@@ -2132,28 +2106,28 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             mutation_lineage
         )
         if not offspring_result:
-            logger.error(f"第{generation}代: 子代评估失败，工作流终止。")
+            logger.error(f"Generation {generation}: Child evaluation failed and workflow terminated.")
             return None
         offspring_docked_file, offspring_lineage_file = offspring_result
 
-        # 5. 选择
+        # 5. Select
         next_parents_docked_file = self.run_selection(
             current_parents_docked_file, 
             offspring_docked_file, 
             generation
         )
         if not next_parents_docked_file:
-            logger.error(f"第{generation}代: 选择操作失败，工作流终止。")
+            logger.error(f"Generation {generation}: The selection operation failed and the workflow terminated.")
             return None
 
         selected_mapping = self._ingest_population_metrics(next_parents_docked_file, generation, mark_active=True)
         if not self.cleanup_intermediate_files:
             if not self._append_qed_sa_to_docked_file(Path(next_parents_docked_file)):
-                logger.error(f"第 {generation} 代: 父代QED/SA补全失败，工作流终止。")
+                logger.error(f"Generation {generation}: The parent generation QED/SA completion failed and the workflow was terminated.")
                 return None
             ranked_file = Path(next_parents_docked_file).with_name("initial_population_ranked.smi")
             if not self._write_ranked_by_docking(Path(next_parents_docked_file), ranked_file):
-                logger.warning(f"第 {generation} 代: initial_population_ranked.smi 写入失败: {ranked_file}")
+                logger.warning(f"Generation {generation}: initial_population_ranked.smi Write failed: {ranked_file}")
         new_active_histories = set(selected_mapping.values())
         candidate_histories = set(self.current_active_histories)
         candidate_histories.update(self.last_offspring_histories)
@@ -2165,7 +2139,7 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
         self.last_offspring_smiles = set()
 
         
-        # 保存下一代父代的血统信息，便于追踪
+        # Save the pedigree information of the next generation’s parents for easy tracking
         if self.enable_lineage_tracking:
             self._save_next_generation_lineage(
                 generation,
@@ -2173,23 +2147,21 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                 offspring_lineage_file
             )
 
-        # 6. 对选择后的精英种群进行评分分析（cleanup 模式跳过）
+        # 6. Perform score analysis on the selected elite population (skip in cleanup mode)
         if not self.cleanup_intermediate_files:
             self.run_selected_population_evaluation(next_parents_docked_file, generation)
 
-        # 7. 清理临时文件（如果启用）
+        # 7. Clean temporary files (if enabled)
         self._cleanup_generation_files(generation)
 
-        logger.info(f"========== 第 {generation} 代进化完成 ==========")
+        logger.info(f"========== Generation {generation} evolution completed ==========")
         return next_parents_docked_file
 
     def _cleanup_generation_files(self, generation_num: int):
-        """
-        cleanup 模式下按代清理：删除整代目录，降低峰值 IO/存储占用。
+        """         Clean up by generation in cleanup mode: delete the entire generation directory to reduce peak IO/storage usage.
         
         Args:
-            generation_num (int): 要清理的代数
-        """
+            generation_num (int): generation to be cleaned         """
         if not self.cleanup_intermediate_files:
             return
 
@@ -2201,18 +2173,18 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
             try:
                 if gen_dir.exists():
                     shutil.rmtree(gen_dir)
-                    logger.info(f"已清理目录: {gen_dir}")
+                    logger.info(f"Cleaned directory: {gen_dir}")
             except Exception as e:
-                logger.warning(f"清理目录失败 {gen_dir}: {e}")
+                logger.warning(f"Failed to clean directory {gen_dir}: {e}")
 
     def _prune_output_to_pop_only(self) -> None:
-        """cleanup 模式最终裁剪：保留 pop.csv 与 oracle_calls*.csv。"""
+        """Cleanup mode final trimming: keep pop.csv and oracle_calls*.csv."""
         if not self.cleanup_intermediate_files:
             return
 
         pop_file = self.output_dir / "pop.csv"
         if not pop_file.exists():
-            logger.warning("cleanup 模式最终裁剪跳过：未找到 pop.csv")
+            logger.warning("cleanup mode final crop skipped: pop.csv not found")
             return
 
         try:
@@ -2226,50 +2198,50 @@ class SoftGAWorkflowExecutor:    #工作流；主函数/入口文件就是在调
                     shutil.rmtree(item)
                 else:
                     item.unlink()
-            logger.info("cleanup 模式最终裁剪完成，保留: %s", ", ".join(sorted(keep_files)))
+            logger.info("The cleanup mode is finally trimmed and retained: %s", ", ".join(sorted(keep_files)))
         except Exception as e:
-            logger.warning(f"cleanup 模式最终裁剪失败: {e}")
+            logger.warning(f"cleanup Pattern final clipping failed: {e}")
 
-# --- 主函数入口 ---
+# --- Main function entry ---
 def main():
-    """主函数，用于解析命令行参数和启动工作流"""
+    """Main function, used to parse command line parameters and start workflow"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='SoftGA工作流执行器')
+    parser = argparse.ArgumentParser(description='SoftGA workflow executor')
     parser.add_argument('--config', type=str, 
                        default=DEFAULT_CONFIG,
-                       help='配置文件路径')
+                       help='Configuration file path')
     parser.add_argument('--receptor', type=str, required=True,
-                       help='要运行的目标受体名称（如 parp1 或 6GL8）')
+                       help='Target receptor name to run on (e.g. parp1 or 6GL8)')
     parser.add_argument('--output_dir', type=str, default=None,
-                       help='(可选) 指定输出目录，覆盖配置文件中的设置')
+                       help='(Optional) Specify the output directory, overriding the settings in the configuration file')
     parser.add_argument('--initial_population_file', type=str, default=None,
-                       help='(可选) 覆盖 workflow.initial_population_file')
+                       help='(Optional) Override workflow.initial_population_file')
     parser.add_argument('--pair_min_tanimoto', type=float, default=None,
-                       help='(可选) 覆盖 crossover.pair_min_tanimoto')
+                       help='(Optional) Override crossover.pair_min_tanimoto')
     parser.add_argument('--pair_max_tanimoto', type=float, default=None,
-                       help='(可选) 覆盖 crossover.pair_max_tanimoto')
+                       help='(Optional) Override crossover.pair_max_tanimoto')
     parser.add_argument('--qed_min', type=float, default=None,
-                       help='(可选) 覆盖 selection.ffhs_settings.constraints.qed_min')
+                       help='(Optional) Override selection.ffhs_settings.constraints.qed_min')
     parser.add_argument('--sa_max', type=float, default=None,
-                       help='(可选) 覆盖 selection.ffhs_settings.constraints.sa_max')
+                       help='(Optional) Override selection.ffhs_settings.constraints.sa_max')
     parser.add_argument(
         '--softbd_enable',
         nargs='?',
         const='true',
         default=None,
-        help='(可选) 覆盖 softbd.enable (true/false)',
+        help='(optional) Override softbd.enable (true/false)',
     )
     parser.add_argument('--docking_exhaustiveness', type=int, default=None,
-                       help='(可选) 覆盖 docking.exhaustiveness')
+                       help='(Optional) Override docking.exhaustiveness')
     parser.add_argument('--max_oracle_calls', type=int, default=None,
-                       help='(可选) Oracle 预算（仅成功 docking 计数）')
+                       help='(Optional) Oracle budget (successful docking count only)')
     parser.add_argument(
         '--enable_crowding_distance',
         nargs='?',
         const='true',
         default=None,
-        help='(可选) 覆盖 selection.*_settings.enable_crowding_distance (true/false)',
+        help='(Optional) Override selection.*_settings.enable_crowding_distance (true/false)',
     )
     
     args = parser.parse_args()
@@ -2299,13 +2271,13 @@ def main():
         )
         success = executor.run_complete_workflow()
         if not success:
-            logger.error("SoftGA工作流执行失败。")
+            logger.error("SoftGA workflow execution failed.")
             return 1
         
-        logger.info("SoftGA工作流成功完成!")
+        logger.info("SoftGA workflow completed successfully!")
 
     except Exception as e:
-        logger.critical(f"工作流执行过程中发生严重错误: {e}", exc_info=True)
+        logger.critical(f"A serious error occurred during workflow execution: {e}", exc_info=True)
         return 1
     return 0
 

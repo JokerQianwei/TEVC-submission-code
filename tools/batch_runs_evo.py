@@ -40,7 +40,7 @@ def summarize_seed(seed_dir: Path) -> int:
 
 
 def find_seed_dirs(root: Path):
-    # 兼容两种结构：
+    # Compatible with two structures:
     # 1) .../seed42/run_*
     # 2) .../seed42/<batch_id>/run_*
     def has_runs(d: Path) -> bool:
@@ -56,7 +56,7 @@ def find_seed_dirs(root: Path):
             continue
         result.extend(sorted(child for child in seed_dir.iterdir() if has_runs(child)))
 
-    # 去重并保持顺序
+    # Remove duplicates and keep order
     seen = set()
     dedup = []
     for p in result:
@@ -70,7 +70,7 @@ def find_seed_dirs(root: Path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('result_dir', help='实验结果目录，如 .../batch-multi/test11-crossover-backup')
+    parser.add_argument('result_dir', help='Experiment result directory, such as .../batch-multi/test11-crossover-backup')
     args = parser.parse_args()
 
     root = Path(args.result_dir).expanduser().resolve()

@@ -26,8 +26,7 @@ softbd:
     gpu_max_batch_size: 1000
     samples_per_parent: 10
     nucleus_p: 1
-    tanimoto_threshold: 0.7  # 距离阈值(dist=1-sim)：先在 dist>=阈值 的候选中随机选；若为空则选 dist 最大者
-    steps: 64
+    tanimoto_threshold: 0.7  # Distance threshold (dist=1-sim): First randomly select among the candidates with dist>=threshold; if it is empty, select the one with the largest dist     steps: 64
     initial_samples: 1000
     gen1_n_select: 100
     gen1_selection_mode: maxmin  # maxmin | random
@@ -40,9 +39,7 @@ softbd:
 docking:
   tool: qvina02  # qvina02 | vina
   exhaustiveness: 1
-  n_poses: 20    # 不会影响 qvina02 模式
-  energy_range: 4.0  # 不会影响 qvina02 模式
-
+  n_poses: 20    # Does not affect qvina02 mode   energy_range: 4.0  # Does not affect qvina02 mode 
 crossover:
   number_of_crossovers: 100
 

@@ -33,7 +33,7 @@ def _is_single_component_smiles(smiles: str, mol: Chem.Mol) -> bool:
 
 
 def run_pre_docking_filter_operation(input_file: str, output_file: str) -> str:
-    """Pre-docking 过滤：只保证结构合法与去重，不做 Lipinski/PAINS 等硬过滤。"""
+    """Pre-docking filtering: only ensures legal structure and deduplication, without hard filtering such as Lipinski/PAINS."""
     os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
 
     smiles = [line.split()[0].strip() for line in open(input_file, 'r', encoding='utf-8') if line.strip()]
@@ -46,7 +46,7 @@ def run_pre_docking_filter_operation(input_file: str, output_file: str) -> str:
     open(output_file, 'w', encoding='utf-8').write(''.join(s + "\n" for s in kept))
     return output_file
 
-# 当前工作流仅使用预对接去重过滤，这里保留接口但不再绑定外部过滤器实现。
+# The current workflow only uses pre-docking deduplication filtering, where the interface is retained but external filter implementation is no longer bound.
 FILTER_CLASS_MAP = {}
 
 
@@ -56,15 +56,13 @@ def init_filters_from_config(config: Dict):
 
 
 def run_filter_operation(config: Dict, input_file: str, output_file: str) -> str:
-    """
-    执行分子过滤操作    
+    """     Perform molecular filtering operations
     Args:
-        config: 配置参数字典
-        input_file: 输入文件路径
-        output_file: 输出文件路径        
+        config: configuration parameter dictionary
+        input_file: input file path
+        output_file: output file path
     Returns:
-        str: 过滤后的结果文件路径
-    """    
+        str: filtered result file path     """    
     os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
     population = [line.split()[0].strip() for line in open(input_file, 'r') if line.strip()]
     filters = init_filters_from_config(config)

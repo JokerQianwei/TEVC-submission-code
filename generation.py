@@ -1,14 +1,12 @@
-"""
-SoftGA SoftBD 生成脚本
+""" SoftGA SoftBD generation script
 ====================================
-此脚本替换了 FragMLM (GPT) 组件。它处理：
-1. 加载 SoftBD 模型（Diffusion）。
-2. 基于代数的动态前缀截断。
-3. SoftBD 的批量生成。
-4. 过滤（有效性、唯一性、新颖性）。
-5. 选择（MaxMinPicker 或 random）。
-6. 全面的日志记录。
-"""
+This script replaces the FragMLM (GPT) component. It handles:
+1. Load the SoftBD model (Diffusion).
+2. Algebra-based dynamic prefix truncation.
+3. Batch generation of SoftBD.
+4. Filtering (validity, uniqueness, novelty).
+5. Select (MaxMinPicker or random).
+6. Comprehensive logging. """
 
 import argparse
 import os
@@ -29,13 +27,13 @@ from rdkit.Chem import AllChem
 from rdkit.SimDivFilters.rdSimDivPickers import MaxMinPicker
 from utils.config_loader import load_config, resolve_config_path
 
-# --- 设置路径以包含根目录模块 ---
+# --- Set path to include root module ---
 SOFTGA_ROOT = Path(__file__).resolve().parent
 MODEL_ROOT = SOFTGA_ROOT / "model"
 if str(MODEL_ROOT) not in sys.path:
     sys.path.insert(0, str(MODEL_ROOT))
 
-# 强制绑定 softga/model/utils.py，避免与 softga/utils 包名冲突
+# Forcefully bind softga/model/utils.py to avoid conflict with the softga/utils package name
 import importlib.util as _ilu
 _utils_path = MODEL_ROOT / "utils.py"
 if _utils_path.exists():
@@ -48,7 +46,7 @@ if _utils_path.exists():
 import dataloader
 import diffusion
 
-# --- 日志设置 ---
+# --- Log settings ---
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     handler = logging.StreamHandler()
@@ -57,19 +55,19 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 SOFTBD_RANDOM_SEED_BITS = 31
 
-# --- 辅助函数 ---
+# ---Auxiliary functions ---
 
 def _build_config(args_dict: Dict, logdir: Path) -> omegaconf.DictConfig:
-    """构建 SoftBD 的 Hydra/OmegaConf 配置。"""
+    """Build Hydra/OmegaConf configuration for SoftBD."""
     base_cfg = omegaconf.OmegaConf.load(MODEL_ROOT / "configs/sample.yaml")
     
-    # 检查模型配置路径
+    # Check model configuration path
     model_name = str(args_dict.get('model', 'small-89M')).strip()
     if model_name.endswith('.yaml'):
         model_name = model_name[:-5]
     model_yaml = MODEL_ROOT / "configs/model" / f"{model_name}.yaml"
     if not model_yaml.exists():
-        raise FileNotFoundError(f"找不到模型配置文件: {model_yaml}")
+        raise FileNotFoundError(f"Model configuration file not found: {model_yaml}")
 
     model_cfg = omegaconf.OmegaConf.load(str(model_yaml))
 
@@ -78,7 +76,7 @@ def _build_config(args_dict: Dict, logdir: Path) -> omegaconf.DictConfig:
         "logdir": str(logdir),
         "nucleus_p": float(args_dict.get("nucleus_p", 0.95)),
         "temperature": float(args_dict.get("temperature", 1.0)),
-        # 这些标志默认值与 sample.yaml/历史行为保持一致，可在 config.yaml 的 softbd.sampling 覆盖
+        # These flag default values ​​are consistent with sample.yaml/historical behavior and can be overridden in softbd.sampling in config.yaml
         "first_hitting": bool(sampling_overrides.get("first_hitting", True)),
         "top1": bool(sampling_overrides.get("top1", True)),
         "next_block_only": bool(sampling_overrides.get("next_block_only", False)),
@@ -86,10 +84,10 @@ def _build_config(args_dict: Dict, logdir: Path) -> omegaconf.DictConfig:
         "stop_on_eos_only": bool(sampling_overrides.get("stop_on_eos_only", True)),
         "entropy_stop": bool(sampling_overrides.get("entropy_stop", False)),
         "var_length": bool(sampling_overrides.get("var_length", True)),
-        "prefix": None,  # 将在生成期间动态设置
+        "prefix": None,  # will be set dynamically during build
     }
 
-    # 如果路径不是绝对路径，则相对于 PROJECT_ROOT 解析路径。
+    # If the path is not absolute, the path is resolved relative to PROJECT_ROOT.
     ckpt_path = Path(args_dict['ckpt'])
     if not ckpt_path.is_absolute():
         ckpt_path = SOFTGA_ROOT / ckpt_path
@@ -120,11 +118,11 @@ def calculate_keep_ratio(
     mode: str = "linear",
     progress_override: Optional[float] = None,
 ) -> float:
-    """计算当前代需要保留的前缀比例 (0.0 - 1.0)。支持按代数或外部进度驱动。"""
+    """Calculate the proportion of prefixes that need to be retained in the current generation (0.0 - 1.0). Supports driving by algebra or external progress."""
     if generation <= 1: return 0.0
 
-    # 固定阶梯策略（按代数硬编码）：Gen2=0.2, Gen3=0.4, Gen4=0.6, Gen5+=0.8
-    # 说明：该模式将忽略 min_ratio/max_ratio，适用于希望前几代快速完成骨架构建的场景。
+    # Fixed ladder strategy (hardcoded by generation): Gen2=0.2, Gen3=0.4, Gen4=0.6, Gen5+=0.8
+    # Note: This mode will ignore min_ratio/max_ratio and is suitable for scenarios where you want to quickly complete the skeleton construction in the first few generations.
     if mode == "step_20_40_60_80":
         if progress_override is not None:
             p = max(0.0, min(1.0, float(progress_override)))
@@ -139,25 +137,25 @@ def calculate_keep_ratio(
             return 0.8
         return {2: 0.2, 3: 0.4, 4: 0.6}.get(generation, 0.8)
     
-    # 计算进度 0.0 -> 1.0
+    # Calculation progress 0.0 -> 1.0
     if progress_override is None:
         denom = max(1, max_generations - 2)
         p = max(0.0, min(1.0, (generation - 2) / denom))
     else:
         p = max(0.0, min(1.0, float(progress_override)))
     
-    # 计算保留比例系数
+    # Calculate retention scale factor
     if mode == "aggressive":
-        progress_factor = p ** 0.5  # 快速上升
+        progress_factor = p ** 0.5  # rapid rise
     elif mode == "super_aggressive":
-        progress_factor = p ** 0.25 # 更加激进地快速上升
+        progress_factor = p ** 0.25 # Rise more aggressively and quickly
     elif mode == "sigmoid":
         progress_factor = 1 / (1 + math.exp(-10 * (p - 0.5)))
     elif mode == "piecewise":
-        # 分段线性策略: 
-        # 前 30% 阶段: 保持 min_ratio (progress_factor = 0)
-        # 中 40% 阶段: 线性过渡
-        # 后 30% 阶段: 保持 max_ratio (progress_factor = 1)
+        # Piecewise linear strategy: 
+        # First 30% stage: keep min_ratio (progress_factor = 0)
+        # Middle 40% stage: linear transition
+        # Last 30% phase: keep max_ratio (progress_factor = 1)
         if p < 0.3:
             progress_factor = 0.3
         elif p > 0.7:
@@ -165,14 +163,14 @@ def calculate_keep_ratio(
         else:
             progress_factor = (p - 0.3) / 0.4
     elif mode == "cosine":
-        # 余弦策略: 使用 1/2 个余弦周期 (0 到 PI)
+        # Cosine Strategy: Use 1/2 cosine period (0 to PI)
         # progress_factor = (1 - cos(p * PI)) / 2
         progress_factor = (1.0 - math.cos(p * math.pi)) / 2.0
     elif mode == "step":
-        # Step (早期饱和) 策略: 
-        # 模拟 Fragment 拼接行为，在前 25% 的代数内快速从 min_ratio 增加到 max_ratio，
-        # 之后一直保持 max_ratio (即只对末端进行微调)。
-        # 适用于 max_generations 较大 (如 25)，但希望在前几代 (如 6) 就完成骨架构建的场景。
+        # Step (early saturation) strategy: 
+        # Simulate Fragment splicing behavior, quickly increasing from min_ratio to max_ratio within the first 25% of generations,
+        # After that max_ratio is kept (i.e. only the ends are fine-tuned).
+        # It is suitable for scenarios where max_generations is large (such as 25), but the skeleton construction is expected to be completed in the first few generations (such as 6).
         saturation_point = 0.25
         if p >= saturation_point:
             progress_factor = 1.0
@@ -184,12 +182,12 @@ def calculate_keep_ratio(
     return min_ratio + progress_factor * (max_ratio - min_ratio)
 
 def get_fingerprint(smiles: str):
-    """计算 Morgan 指纹。"""
+    """Calculate the Morgan fingerprint."""
     mol = Chem.MolFromSmiles(smiles)
     return AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=2048) if mol else None
 
 def clean_smiles(smiles: str) -> str:
-    """移除 [BOS], [EOS], [PAD] tokens。"""
+    """Removed [BOS], [EOS], [PAD] tokens."""
     return smiles.replace("[BOS]", "").replace("[EOS]", "").replace("[PAD]", "").strip()
 
 
@@ -204,7 +202,7 @@ def _resolve_softbd_seed(base_seed: int, softbd_config: Dict) -> Tuple[str, int]
     cfg.pop("random_seed_bits", None)
     seed_mode = str(cfg.get("seed_mode", "workflow")).strip().lower()
     if seed_mode not in {"workflow", "random_per_run"}:
-        logger.warning(f"softbd.seed_mode 非法: {seed_mode}，回退到 workflow")
+        logger.warning(f"softbd.seed_mode Illegal: {seed_mode}, fall back to workflow")
         seed_mode = "workflow"
 
     if seed_mode == "random_per_run":
@@ -213,7 +211,7 @@ def _resolve_softbd_seed(base_seed: int, softbd_config: Dict) -> Tuple[str, int]
         softbd_seed = int(base_seed)
 
     logger.info(
-        f"SoftBD seed 已确定: mode={seed_mode}, random_seed_bits={SOFTBD_RANDOM_SEED_BITS}, seed={int(softbd_seed)}"
+        f"SoftBD seed Determined: mode={seed_mode}, random_seed_bits={SOFTBD_RANDOM_SEED_BITS}, seed={int(softbd_seed)}"
     )
     return seed_mode, int(softbd_seed)
 
@@ -224,12 +222,12 @@ def _normalize_gen1_selection_mode(mode: Optional[str]) -> str:
         return "maxmin"
     if raw in {"random", "rand"}:
         return "random"
-    logger.warning(f"gen1_selection_mode 非法: {mode}，回退到 maxmin")
+    logger.warning(f"gen1_selection_mode Illegal: {mode}, fallback to maxmin")
     return "maxmin"
 
 
 def is_single_component_smiles(smiles: str, mol: Chem.Mol) -> bool:
-    """判定是否为单一组分（不含 '.' 且 RDKit 解析后只有 1 个 fragment）。"""
+    """Determine whether it is a single component (does not contain '.' and there is only 1 fragment after RDKit parsing)."""
     if not smiles or "." in smiles:
         return False
     try:
@@ -257,7 +255,7 @@ class SoftBDSampler:
         ckpt_path = softbd_config.get('ckpt')
         vocab_path = softbd_config.get('vocab')
         if not ckpt_path or not vocab_path:
-            raise ValueError('softbd.ckpt / softbd.vocab 缺失')
+            raise ValueError('softbd.ckpt / softbd.vocab is missing')
 
         gen_params = softbd_config.get('generation_params', {})
         sampling_cfg = dict(softbd_config.get("sampling") or {})
@@ -289,7 +287,7 @@ class SoftBDSampler:
         self.tokenizer = dataloader.get_tokenizer(self.cfg)
         self._seed_all(seed)
 
-        logger.info(f"正在从 {ckpt_path} 加载 SoftBD 模型...")
+        logger.info(f"Loading SoftBD model from {ckpt_path}...")
         self.model = diffusion.Diffusion.load_from_checkpoint(
             self.cfg.eval.checkpoint_path,
             tokenizer=self.tokenizer,
@@ -329,7 +327,7 @@ class SoftBDSampler:
         self.model.config.sampling.logdir = str(log_dir)
         self.model.config.sampling.nucleus_p = float(gen_params.get('nucleus_p', 0.95))
         self.model.config.sampling.temperature = float(cfg.get('temperature', 1.0))
-        # 同步其他采样标志，避免“只改了 config 但运行时没生效”
+        # Synchronize other sampling flags to avoid "only config is changed but it does not take effect when running"
         for k in ["first_hitting", "top1", "next_block_only", "kv_cache", "stop_on_eos_only", "entropy_stop", "var_length"]:
             if k in sampling_cfg:
                 setattr(self.model.config.sampling, k, bool(sampling_cfg[k]))
@@ -358,7 +356,7 @@ class SoftBDSampler:
             valid_fps = []
             seen = set()
             for smi in generated:
-                # 多组分（含 '.'）直接判定为无效，避免进入后续对接/GA
+                # Multiple components (including '.') are directly judged as invalid to avoid entering subsequent docking/GA
                 if "." in smi:
                     continue
                 mol = Chem.MolFromSmiles(smi)
@@ -413,7 +411,7 @@ class SoftBDSampler:
                     f.write(s + '\n')
 
             logger.info(
-                f"SoftBD 统计: raw={len(generated)} valid_unique={len(valid_smiles)} selected={len(selected)} "
+                f"SoftBD Statistics: raw={len(generated)} valid_unique={len(valid_smiles)} selected={len(selected)}"
                 f"gen1_selection_mode={gen1_selection_mode} NONE_VALID=0"
             )
             return str(final_output_file)
@@ -442,10 +440,10 @@ class SoftBDSampler:
             progress_override=strategy_progress,
         )
         if strategy_progress is None:
-            logger.info(f"动态掩码 ({strategy_mode})：目标保留比例 {current_ratio:.2f}")
+            logger.info(f"Dynamic mask ({strategy_mode}): target retention ratio {current_ratio:.2f}")
         else:
             logger.info(
-                "动态掩码 (%s)：目标保留比例 %.2f (oracle_progress=%.3f)",
+                "Dynamic mask (%s): target retention ratio %.2f (oracle_progress=%.3f)",
                 strategy_mode,
                 current_ratio,
                 float(strategy_progress),
@@ -478,7 +476,7 @@ class SoftBDSampler:
                 raw_generated += len(cleaned)
 
                 for task, gen_smi in zip(batch, cleaned):
-                    # 多组分（含 '.'）直接判定为无效，避免进入候选池
+                    # Multiple components (including '.') are directly judged as invalid to avoid entering the candidate pool.
                     if "." in gen_smi:
                         continue
                     cand_mol = Chem.MolFromSmiles(gen_smi)
@@ -533,12 +531,12 @@ class SoftBDSampler:
                 f.write(s + '\n')
 
         logger.info(
-            f"SoftBD 统计: parents={len(parents)} tasks={len(all_tasks)} raw={raw_generated} valid_selected={len(final_selected)} "
+            f"SoftBD Statistics: parents={len(parents)} tasks={len(all_tasks)} raw={raw_generated} valid_selected={len(final_selected)}"
             f"NONE_VALID={none_valid} NONE_GENERATED={none_generated}"
         )
         return str(final_output_file)
 
-# --- 主逻辑 ---
+# --- Main logic ---
 
 def run_softbd_generation(
     parent_file: str,
@@ -551,7 +549,7 @@ def run_softbd_generation(
     max_generations_override: Optional[int] = None,
     strategy_progress_override: Optional[float] = None,
 ) -> Optional[str]:
-    logger.info(f"第 {generation} 代开始 SoftBD 生成")
+    logger.info(f"SoftBD generation starts at generation {generation}")
     cfg_path = resolve_config_path(config_path, SOFTGA_ROOT)
     full_config = load_config(str(cfg_path), SOFTGA_ROOT)
 
@@ -573,20 +571,20 @@ def run_softbd_generation(
         strategy_progress=strategy_progress_override,
     )
 
-# --- CLI 入口点 ---
+# --- CLI entry point ---
 
 def main():
-    parser = argparse.ArgumentParser(description="SoftBD 生成模块")
-    parser.add_argument("--parent_file", required=True, help="输入父代 SMILES 文件")
-    parser.add_argument("--generation", type=int, required=True, help="当前代数索引")
-    parser.add_argument("--config_path", required=True, help="主 config.yaml 的路径")
-    parser.add_argument("--output_dir", required=True, help="保存输出的目录")
+    parser = argparse.ArgumentParser(description="SoftBD generation module")
+    parser.add_argument("--parent_file", required=True, help="Import parent SMILES file")
+    parser.add_argument("--generation", type=int, required=True, help="Current algebra index")
+    parser.add_argument("--config_path", required=True, help="Path to main config.yaml")
+    parser.add_argument("--output_dir", required=True, help="Directory to save output")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--initial_samples", type=int, default=100, help="Initial samples count for Generation 1")
     parser.add_argument("--max_generations", type=int, default=None, help="(Optional) Override max_generations for keep-ratio schedule")
     parser.add_argument("--strategy_progress", type=float, default=None, help="(Optional) Override keep-ratio progress [0,1]")
 
-    # 允许通过 CLI 覆盖 SoftBD 关键超参（保证上层工作流覆盖真实生效）
+    # Allows SoftBD key hyperparameters to be overridden through the CLI (to ensure that upper-layer workflow overrides truly take effect)
     parser.add_argument("--gpu", type=str, default=None)
     parser.add_argument("--length", type=int, default=None)
     parser.add_argument("--block_size", type=int, default=None)
@@ -605,16 +603,16 @@ def main():
     
     args = parser.parse_args()
     
-    # 从主配置加载 SoftBD 配置部分
+    # Load the SoftBD configuration section from the main configuration
     cfg_path = resolve_config_path(args.config_path, SOFTGA_ROOT)
     full_config = load_config(str(cfg_path), SOFTGA_ROOT)
         
     softbd_config = full_config.get('softbd', {})
     if not softbd_config.get('enable', False):
-        logger.warning("配置中禁用了 SoftBD，但脚本被调用了。")
+        logger.warning("SoftBD is disabled in the configuration, but the script is called.")
         return
 
-    # --- 应用 CLI 覆盖 ---
+    # --- Apply CLI override ---
     if args.gpu is not None:
         softbd_config['gpu'] = str(args.gpu)
     if args.length is not None:

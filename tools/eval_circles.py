@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-计算 SoftGA CSV 的 “#Circles of generated hit molecules”。
+""" Calculate the "#Circles of generated hit molecules" for SoftGA CSV.
 
-当前输入 CSV 适配：
-- 列名支持：smiles/smi/SMILES, docking_score/rv, qed/QED, sa/SA
-- 默认仅评估前 3000 条
+Current input CSV adaptation:
+- Listing support: smiles/smi/SMILES, docking_score/rv, qed/QED, sa/SA
+- Only the first 3000 entries are evaluated by default
 
-hit 定义（默认）：
-- SMILES 去重 + RDKit 可解析
+hit definition (default):
+- SMILES deduplication + RDKit parsable
 - QED > 0.5
 - SA < 5.0
-- docking_score < 目标阈值（越小越好）
-"""
+- docking_score < target threshold (smaller is better) """
 
 from __future__ import annotations
 
@@ -119,15 +117,15 @@ class NCircles:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SoftGA CSV：计算 #Circles（命中集合）")
-    parser.add_argument("-i", "--input", type=Path, required=True, help="输入 CSV")
+    parser = argparse.ArgumentParser(description="SoftGA CSV: Calculate #Circles (hit set)")
+    parser.add_argument("-i", "--input", type=Path, required=True, help="Enter CSV")
     parser.add_argument(
         "-t",
         "--target",
         type=str,
         required=True,
         choices=list(TARGETS),
-        help="目标受体，用于命中 docking 阈值",
+        help="Target receptor for hitting docking threshold",
     )
     parser.add_argument("--max-rows", type=int, default=3000)
     parser.add_argument("--qed-thr", type=float, default=0.5)

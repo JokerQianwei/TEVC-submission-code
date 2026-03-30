@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-绘制 Top1 Docking 随代数变化曲线，并在点旁标注 Top1 分子的 QED/SA。
+""" Plot Top1 Docking as a function of algebra and label the QED/SA of Top1 molecules next to the points.
 
-数据来源（按优先级）：
-1) generation_g/initial_population_ranked.smi（推荐：真实“种群文件”，含 docking/QED/SA）
-2) generation_g/generation_g_evaluation.txt（scoring.py 报告）
-"""
+Data sources (in order of priority):
+1) generation_g/initial_population_ranked.smi (recommended: real "population file", including docking/QED/SA)
+2) generation_g/generation_g_evaluation.txt (scoring.py report) """
 
 import argparse
 import re
@@ -76,10 +74,10 @@ def plot_top1_curve(points: List[Tuple[int, float, Optional[float], Optional[flo
     for i, (g, s, q, sa) in enumerate(points):
         if q is None or sa is None:
             continue
-        # 为了节省横向空间：把 (QED, SA) 改为上下两行，并缩小字体，减少遮挡
+        # In order to save horizontal space: change (QED, SA) to two lines up and down, and reduce the font to reduce occlusion
         label = f"{q:.3f}\n{sa:.3f}"
-        # 进一步减少遮挡：若相邻代 Top1 的 (QED,SA) 显示值相同，则只标注一次
-        # （曲线本身已经表达了 docking 变化，重复的 QED/SA 标注信息增量很小）
+        # Further reduce occlusion: If the (QED,SA) display values ​​​​of the adjacent generation Top1 are the same, they will only be marked once.
+        # (The curve itself already expresses the docking changes, and the repeated QED/SA annotation information has a small increment)
         if label == last_label and i != len(points) - 1:
             continue
         last_label = label
@@ -105,8 +103,8 @@ def plot_top1_curve(points: List[Tuple[int, float, Optional[float], Optional[flo
 
 def main():
     p = argparse.ArgumentParser(description="Plot Top1 docking score per generation")
-    p.add_argument("--run_dir", required=True, help="运行输出目录（包含 generation_* 子目录）")
-    p.add_argument("--output_file", default=None, help="输出图片路径（默认写到 run_dir/top1_docking_curve.png）")
+    p.add_argument("--run_dir", required=True, help="Run output directory (contains generation_* subdirectories)")
+    p.add_argument("--output_file", default=None, help="Output image path (written to run_dir/top1_docking_curve.png by default)")
     args = p.parse_args()
 
     run_dir = Path(args.run_dir)

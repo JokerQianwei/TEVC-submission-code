@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-SoftGA 分子对接模块
+""" SoftGA molecular docking module
 ==================
 qvina02: obabel + qvina02 CLI
-vina: RDKit + Meeko + AutoDock Vina Python API (benchmark 对齐)
-"""
+vina: RDKit + Meeko + AutoDock Vina Python API (benchmark alignment) """
 import os
 import sys
 import shutil
@@ -25,7 +23,7 @@ if str(PROJECT_ROOT_DIR) not in sys.path:
 
 from utils.config_loader import load_config, resolve_config_path
 
-# 配置日志
+# Configuration log
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -105,25 +103,25 @@ def _resolve_receptor_box(target: str) -> Tuple[Tuple[float, float, float], Tupl
         default_box = DEFAULT_RECEPTOR_BOXES[target]
         return default_box["center"], default_box["size"]
     supported = ", ".join(sorted(DEFAULT_RECEPTOR_BOXES.keys()))
-    raise ValueError(f"不支持的受体: {target}。可用受体: {supported}")
+    raise ValueError(f"Unsupported receptor: {target}. Available receptors: {supported}")
 
 
 def _canonicalize_receptor_name(target: str) -> str:
     receptor = str(target).strip()
     if not receptor:
-        raise ValueError("受体名称不能为空")
+        raise ValueError("Receptor name cannot be empty")
     canonical = RECEPTOR_NAME_LOOKUP.get(receptor.lower())
     if canonical is not None:
         return canonical
     supported = ", ".join(sorted(DEFAULT_RECEPTOR_BOXES.keys()))
-    raise ValueError(f"不支持的受体: {receptor}。可用受体: {supported}")
+    raise ValueError(f"Unsupported receptor: {receptor}. Available receptors: {supported}")
 
 
 def _normalize_docking_tool(tool: Optional[str]) -> str:
     normalized = str(tool if tool is not None else DEFAULT_DOCKING_TOOL).strip().lower()
     if normalized not in SUPPORTED_DOCKING_TOOLS:
         supported = ", ".join(SUPPORTED_DOCKING_TOOLS)
-        raise ValueError(f"不支持的 docking tool: {tool}。可选值: {supported}")
+        raise ValueError(f"Unsupported docking tool: {tool}. Optional values: {supported}")
     return normalized
 
 
@@ -149,13 +147,13 @@ def _resolve_qvina_executable(docking_executable: Optional[str]) -> str:
             checked_candidates.append(str(configured_path))
             if not configured_path.exists():
                 raise FileNotFoundError(
-                    f"指定的 docking 可执行文件不存在: {configured_path}. "
-                    "请检查 config.yaml 的 docking.executable。"
+                    f"The specified docking executable does not exist: {configured_path}."
+                    "Please check config.yaml for docking.executable."
                 )
             if not _is_executable_file(configured_path):
                 raise PermissionError(
-                    f"指定的 docking 可执行文件不可执行: {configured_path}. "
-                    "请执行 chmod +x 或替换为可执行文件。"
+                    f"The specified docking executable is not executable: {configured_path}."
+                    "Please execute chmod +x or replace with executable file."
                 )
             return str(configured_path)
 
@@ -166,17 +164,15 @@ def _resolve_qvina_executable(docking_executable: Optional[str]) -> str:
 
     checked_text = "\n".join(f"- {item}" for item in checked_candidates)
     raise FileNotFoundError(
-        "找不到可用的 docking 可执行文件 (tool=qvina02)。\n"
-        f"已检查:\n{checked_text}\n"
-        "可通过 config.yaml:docking.executable 显式指定。"
+        "No available docking executable found (tool=qvina02). \\n"
+        f"Checked:\n{checked_text}\n"
+        "Can be specified explicitly via config.yaml:docking.executable."
     )
 
 class DockingVinaSoftGA(object):
-    """
-    SoftGA Docking 类
-    1. 资源路径指向 softga/utils/docking
-    2. 使用 obabel CLI 进行格式转换，避免 Python 绑定兼容问题
-    """
+    """     SoftGA Docking class
+    1. The resource path points to softga/utils/docking
+    2. Use obabel CLI for format conversion to avoid Python binding compatibility issues     """
     def __init__(
         self,
         target,
@@ -204,15 +200,15 @@ class DockingVinaSoftGA(object):
             self._ensure_vina_python_stack()
         self.receptor_file = os.path.join(self.base_dir, f'{target}.pdbqt')
         
-        # 检查必要文件是否存在
+        # Check if necessary files exist
         if not os.path.exists(self.receptor_file):
-            raise FileNotFoundError(f"找不到受体文件: {self.receptor_file}")
+            raise FileNotFoundError(f"Receptor file not found: {self.receptor_file}")
         if self.docking_tool == "qvina02":
             logger.info(f"Docking tool: {self.docking_tool}, executable: {self.vina_program}")
         else:
             logger.info("Docking tool: vina, backend: python-api")
 
-        # 对接参数
+        # Docking parameters
         self.exhaustiveness = exhaustiveness
         self.seed = seed
         self.total_cpu = max(1, int(num_processors) if num_processors else 1)
@@ -224,35 +220,35 @@ class DockingVinaSoftGA(object):
         self.timeout_gen3d = 30
         self.timeout_dock = 100
 
-        # 创建临时目录
+        # Create temporary directory
         self.temp_dir = tempfile.mkdtemp(prefix=f"trio_dock_{target}_")
         logger.info(f"Docking temp dir created: {self.temp_dir}")
         
-        # 仅 qvina02 需要 OpenBabel CLI
+        # Only qvina02 requires OpenBabel CLI
         if self.docking_tool == "qvina02":
             self._setup_openbabel_env()
 
     def _setup_openbabel_env(self):
-        """配置 OpenBabel 环境变量，支持自动探测"""
-        # 1. 尝试从 CONDA_PREFIX 获取
+        """Configure OpenBabel environment variables to support automatic detection"""
+        # 1. Try to get from CONDA_PREFIX
         prefix = os.environ.get('CONDA_PREFIX')
         
-        # 2. 如果没有 CONDA_PREFIX，尝试从 obabel 可执行文件路径推断
+        # 2. If there is no CONDA_PREFIX, try to infer from the obabel executable path
         if not prefix:
             try:
                 obabel_path = shutil.which('obabel')
                 if obabel_path:
-                    # obabel 通常在 .../bin/obabel，所以向上两级是 prefix
+                    # obabel is usually in .../bin/obabel, so the two levels up are prefix
                     prefix = str(Path(obabel_path).resolve().parent.parent)
                     logger.info(f"Inferring OpenBabel prefix from executable: {prefix}")
             except Exception:
                 pass
 
         if not prefix:
-            logger.warning("未检测到 OpenBabel 安装路径 (CONDA_PREFIX 或 obabel 命令)，跳过环境变量自动配置。")
+            logger.warning("OpenBabel installation path not detected (CONDA_PREFIX or obabel command), skipping environment variable auto-configuration.")
             return
 
-        # 定义探测路径
+        # Define detection path
         paths = {
             "BABEL_DATADIR": os.path.join(prefix, "share", "openbabel"),
             "BABEL_LIBDIR": os.path.join(prefix, "lib", "openbabel")
@@ -260,10 +256,10 @@ class DockingVinaSoftGA(object):
 
         for env_var, base_path in paths.items():
             if not os.path.exists(base_path):
-                # logger.debug(f"路径不存在: {base_path}") # 降低日志级别
+                # logger.debug(f"Path does not exist: {base_path}") # Reduce log level
                 continue
                 
-            # 查找版本号子目录 (如 3.1.0)
+            # Find the version number subdirectory (such as 3.1.0)
             try:
                 subdirs = sorted([d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))])
                 final_path = os.path.join(base_path, subdirs[-1]) if subdirs else base_path
@@ -282,12 +278,12 @@ class DockingVinaSoftGA(object):
             import vina as _vina  # noqa: F401
         except Exception as e:
             raise ImportError(
-                "tool=vina 需要安装并可导入 rdkit, meeko, vina（建议使用 2025-sbdd-benchmark/vina_environment.yaml）。"
+                "tool=vina needs to be installed and can import rdkit, meeko, vina (it is recommended to use 2025-sbdd-benchmark/vina_environment.yaml)."
             ) from e
 
     @staticmethod
     def _has_nonzero_coords_mol(mol_file: str, tol: float = 1e-6) -> bool:
-        """检查 .mol 坐标是否存在且非全0（用于拦截坏构象）"""
+        """Check if .mol ​​coordinates exist and are not all 0 (used to intercept bad conformations)"""
         try:
             with open(mol_file, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()
@@ -326,12 +322,10 @@ class DockingVinaSoftGA(object):
         return False
 
     def gen_3d(self, smi, ligand_mol_file):
-        """
-        使用 obabel 生成 3D 构象 (.mol)。
-        若直生 3D 失败或产物坐标全 0，则自动回退：
+        """         Use obabel to generate 3D conformations (.mol).
+        If the direct 3D generation fails or the product coordinates are all 0, it will automatically fall back:
         SMILES -> raw.sdf -> --gen3D -> .mol
-        返回: 是否触发了回退流程
-        """
+        Return: Whether the rollback process is triggered         """
         direct_error = None
         direct_cmd = ['obabel', '-:' + smi, '--gen3D', '-O', ligand_mol_file]
         try:
@@ -343,10 +337,10 @@ class DockingVinaSoftGA(object):
             )
             if self._has_nonzero_coords_mol(ligand_mol_file):
                 return False
-            logger.warning("检测到全0坐标，触发3D重建回退流程。")
+            logger.warning("All 0 coordinates are detected, triggering the 3D reconstruction rollback process.")
         except Exception as e:
             direct_error = e
-            logger.warning(f"直接3D生成失败，触发回退流程: {e}")
+            logger.warning(f"Direct 3D generation failed, triggering the rollback process: {e}")
 
         raw_sdf_file = os.path.splitext(ligand_mol_file)[0] + "_raw.sdf"
         fallback_sdf_file = os.path.splitext(ligand_mol_file)[0] + "_fallback3d.sdf"
@@ -379,27 +373,27 @@ class DockingVinaSoftGA(object):
 
         if not self._has_nonzero_coords_mol(ligand_mol_file):
             if direct_error is not None:
-                raise RuntimeError("3D构象生成失败：直接生成失败且回退后仍为全0坐标。") from direct_error
-            raise RuntimeError("3D构象生成失败：回退后仍为全0坐标。")
+                raise RuntimeError("3D conformation generation failed: direct generation failed and the coordinates were still all 0 after rollback.") from direct_error
+            raise RuntimeError("3D conformation generation failed: still all 0 coordinates after rollback.")
         return True
 
     def convert_mol_to_pdbqt(self, mol_file, pdbqt_file):
-        """使用 obabel CLI 将 .mol 转换为 .pdbqt (替代 pybel)"""
+        """Convert .mol ​​to .pdbqt using obabel CLI (replacement for pybel)"""
         # obabel -imol input.mol -opdbqt -O output.pdbqt
         cmd = ['obabel', '-imol', mol_file, '-opdbqt', '-O', pdbqt_file]
         subprocess.check_output(
             cmd,
             stderr=subprocess.STDOUT,
-            timeout=self.timeout_gen3d, # 复用 gen3d 的超时
+            timeout=self.timeout_gen3d, # Timeout for reusing gen3d
             universal_newlines=True
         )
 
     def docking(self, receptor_file, ligand_mol_file, ligand_pdbqt_file, docking_pdbqt_file):
-        """执行 Docking 流程: 转换格式 -> 调用 docking 程序(qvina02/vina)"""
-        # 1. 转换 .mol -> .pdbqt
+        """Execute Docking process: Convert format -> Call docking program (qvina02/vina)"""
+        # 1. Convert .mol ​​-> .pdbqt
         self.convert_mol_to_pdbqt(ligand_mol_file, ligand_pdbqt_file)
 
-        # 2. 调用 qvina02
+        # 2. Call qvina02
         cmd = [
             self.vina_program,
             '--receptor', receptor_file,
@@ -426,7 +420,7 @@ class DockingVinaSoftGA(object):
             universal_newlines=True
         )
         
-        # 3. 解析结果
+        # 3. Parse the results
         result_lines = result.split('\n')
         check_result = False
         affinity_list = list()
@@ -455,7 +449,7 @@ class DockingVinaSoftGA(object):
         return affinity_list
 
     def docking_vina_python_api(self, smi: str) -> Optional[float]:
-        """Benchmark 对齐流程：RDKit + Meeko + Vina Python API。"""
+        """Benchmark alignment process: RDKit + Meeko + Vina Python API."""
         from rdkit import Chem
         from rdkit.Chem import AllChem
         import meeko
@@ -484,16 +478,16 @@ class DockingVinaSoftGA(object):
         return float(energies[0][0])
 
     def creator(self, q, data, num_sub_proc):
-        """生产者：将任务放入队列"""
+        """Producer: puts tasks into the queue"""
         for d in data:
             q.put(d) # (idx, smi)
         
-        # 发送结束信号
+        # Send end signal
         for _ in range(num_sub_proc):
             q.put('DONE')
 
     def docking_subprocess(self, q, return_dict, sub_id):
-        """消费者子进程：执行对接任务"""
+        """Consumer subprocess: perform docking tasks"""
         while True:
             item = q.get()
             if item == 'DONE':
@@ -509,7 +503,7 @@ class DockingVinaSoftGA(object):
                     return_dict[idx] = 99.9
                 continue
 
-            # qvina02 路径：保留原有 obabel + CLI 流程
+            # qvina02 path: retain the original obabel + CLI process
             ligand_mol_file = os.path.join(self.temp_dir, f'ligand_{sub_id}_{idx}.mol')
             ligand_pdbqt_file = os.path.join(self.temp_dir, f'ligand_{sub_id}_{idx}.pdbqt')
             docking_pdbqt_file = os.path.join(self.temp_dir, f'dock_{sub_id}_{idx}.pdbqt')
@@ -517,7 +511,7 @@ class DockingVinaSoftGA(object):
             try:
                 fallback_used = self.gen_3d(smi, ligand_mol_file)
                 if fallback_used:
-                    logger.info(f"子进程{sub_id}分子{idx}已使用3D重建回退流程。")
+                    logger.info(f"Child process {sub_id} molecule {idx} has used the 3D reconstruction fallback process.")
                 affinity_list = self.docking(
                     self.receptor_file,
                     ligand_mol_file,
@@ -535,10 +529,8 @@ class DockingVinaSoftGA(object):
                 continue
 
     def predict(self, smiles_list):
-        """
-        并行预测 SMILES 列表的亲和力
-        返回: 对应顺序的 affinity list
-        """
+        """         Parallel prediction of affinities for SMILES lists
+        Returns: affinity list in corresponding order         """
         if not smiles_list:
             return []
 
@@ -548,32 +540,32 @@ class DockingVinaSoftGA(object):
         manager = Manager()
         return_dict = manager.dict()
         
-        # 启动生产者
+        # Start producer
         proc_master = Process(target=self.creator, args=(q, data, num_sub_proc))
         proc_master.start()
 
-        # 启动消费者进程
+        # Start consumer process
         procs = []
         for sub_id in range(num_sub_proc):
             proc = Process(target=self.docking_subprocess, args=(q, return_dict, sub_id))
             procs.append(proc)
             proc.start()
 
-        # 等待所有进程结束
+        # Wait for all processes to end
         proc_master.join()
         for proc in procs:
             proc.join()
         
-        # 整理结果
+        # Organize results
         affinity_list = []
-        # keys 必须排序，以保证与输入的 smiles_list 顺序一致
+        # keys must be sorted to match the order of the input smiles_list
         for i in range(len(smiles_list)):
             affinity_list.append(return_dict.get(i, 99.9))
             
         return affinity_list
 
     def __del__(self):
-        """析构时清理临时目录"""
+        """Clean the temporary directory during destruction"""
         if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
             try:
                 rmtree(self.temp_dir)
@@ -591,31 +583,29 @@ def run_molecular_docking(
     override_docking_tool: Optional[str] = None,
     override_exhaustiveness: Optional[int] = None,
 ) -> Optional[str]:
-    """
-    执行 SoftGA 对接流程
-    """
-    logger.info("启动 SoftGA 对接流程...")
+    """     Execute SoftGA docking process     """
+    logger.info("Start the SoftGA docking process...")
     
-    # 1. 确定受体
-    # 优先使用命令行传入的，否则使用配置中的默认受体
+    # 1. Identify the receptor
+    # Priority is given to the one passed in from the command line, otherwise the default receptor in the configuration is used.
     if not receptor_name:
         receptor_name = config.get('receptors', {}).get('default_receptor', {}).get('name')
     
     if not receptor_name:
-        logger.error("未指定受体名称且无法从配置中获取默认受体。")
+        logger.error("No receptor name was specified and the default receptor could not be obtained from the configuration.")
         return None
         
-    # 2. 确定并发数
+    # 2. Determine the number of concurrencies
     num_processors = override_num_processors
     if num_processors is None:
         num_processors = config.get('performance', {}).get('number_of_processors', 1)
-        if num_processors == -1: # 自动
+        if num_processors == -1: # automatic
             num_processors = max(1, os.cpu_count() - 2)
     
     docking_config = config.get('docking', {}) or {}
     if not isinstance(docking_config, dict):
         docking_config = {}
-    # 获取 exhaustiveness 配置，优先级：命令行覆盖 > config.yaml 配置 > 默认值
+    # Get exhaustiveness configuration, priority: command line override > config.yaml configuration > default value
     exhaustiveness = (
         override_exhaustiveness
         if override_exhaustiveness is not None
@@ -625,7 +615,7 @@ def run_molecular_docking(
     docking_tool = _normalize_docking_tool(docking_tool)
     vina_energy_range = float(docking_config.get('energy_range', 4.0))
     vina_n_poses = int(docking_config.get('n_poses', 20))
-    # 仅保留配置层兼容入口，不再提供 CLI 覆盖 executable
+    # Only the configuration layer compatibility entry is retained, and CLI coverage executable is no longer provided.
     docking_executable = docking_config.get('executable')
     if docking_tool == "qvina02" and docking_executable is not None:
         docking_executable = str(docking_executable).strip() or None
@@ -643,8 +633,8 @@ def run_molecular_docking(
     if seed is not None:
         logger.info(f"Random Seed: {seed}")
     
-    # 3. 读取 SMILES 文件
-    # 输入文件格式可能是 "SMILES Name" 或仅 "SMILES"
+    # 3. Read SMILES files
+    # Input file format may be "SMILES Name" or just "SMILES"
     try:
         with open(ligands_file, 'r', encoding='utf-8') as f:
             lines = [line.strip() for line in f if line.strip()]
@@ -658,12 +648,12 @@ def run_molecular_docking(
             clean_smiles.append(smi)
             
         if not clean_smiles:
-            logger.warning("输入文件没有有效 SMILES")
+            logger.warning("Input file does not have valid SMILES")
             return None
             
-        logger.info(f"读取到 {len(clean_smiles)} 个分子进行对接")
+        logger.info(f"Read {len(clean_smiles)} molecules for docking")
         
-        # 4. 执行对接
+        # 4. Perform docking
         docker = DockingVinaSoftGA(
             receptor_name, 
             num_processors=num_processors, 
@@ -676,36 +666,36 @@ def run_molecular_docking(
         )
         scores = docker.predict(clean_smiles)
         
-        # 5. 写入结果
-        # 格式：SMILES\tScore (按 Score 升序排序)
+        # 5. Write results
+        # Format: SMILES\tScore (sorted by Score in ascending order)
         output_dir = os.path.join(generation_dir, "docking_results")
         os.makedirs(output_dir, exist_ok=True)
         final_scores_file = os.path.join(output_dir, "final_scored.smi")
         
         results = []
         for i, score in enumerate(scores):
-            # 过滤失败结果 (失败分值通常为 99.9)
+            # Filter failure results (failure score is usually 99.9)
             if score > 50:
                 continue
             results.append((clean_smiles[i], score))
             
-        # 排序：分数越低越好
+        # Sorting: The lower the score, the better
         results.sort(key=lambda x: x[1])
         
         with open(final_scores_file, 'w', encoding='utf-8') as f:
             for smi, score in results:
                 f.write(f"{smi}\t{score}\n")
                 
-        logger.info(f"对接完成，有效结果已写入: {final_scores_file}")
+        logger.info(f"The docking is completed and the valid results have been written: {final_scores_file}")
         return final_scores_file
         
     except Exception as e:
-        logger.error(f"SoftGA 对接流程异常: {e}", exc_info=True)
+        logger.error(f"SoftGA Abnormal connection process: {e}", exc_info=True)
         return None
 
 
 def main():
-    """主函数，适配 FragEvo 调用接口"""
+    """Main function, adapted to FragEvo calling interface"""
     parser = argparse.ArgumentParser(description="SoftGA docking")
     parser.add_argument('--smiles_file', type=str, required=True, help='Input SMILES file')
     parser.add_argument('--output_file', type=str, required=True, help='Final output file path')
@@ -723,7 +713,7 @@ def main():
         cfg_path = resolve_config_path(args.config_file, PROJECT_ROOT_DIR)
         config = load_config(str(cfg_path), PROJECT_ROOT_DIR)
     except Exception as e:
-        logging.error(f"无法加载配置文件 {args.config_file}: {e}")
+        logging.error(f"Unable to load configuration file {args.config_file}: {e}")
         exit(1)
 
     final_output_file = run_molecular_docking(
@@ -738,17 +728,17 @@ def main():
     )
     
     if final_output_file and os.path.exists(final_output_file):
-        # 复制到最终要求的输出路径
+        # Copy to final required output path
         try:
             shutil.copy(final_output_file, args.output_file)
-            logging.info(f"最终结果已复制到: {args.output_file}")
+            logging.info(f"The final result has been copied to: {args.output_file}")
             exit(0)
         except Exception as e:
-            logger.error(f"结果复制失败: {e}")
+            logger.error(f"Result copy failed: {e}")
             exit(1)
     else:
-        logger.error("对接流程失败，未生成有效文件。")
-        # 创建空文件防止流水线崩溃
+        logger.error("The docking process failed and no valid files were generated.")
+        # Create empty files to prevent pipeline crashes
         Path(args.output_file).touch()
         exit(1)
 

@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-为 docked 文件逐行补全 QED/SA 两列。
+""" Line-by-line completion of QED/SA two columns for docked files.
 
-输入通常为: SMILES <tab|space> docking_score [extra...]
-输出为: SMILES docking_score QED SA [extra...]
-若原文件已含 >=4 列，则视第3/4列为旧 QED/SA 并覆盖，保留第5列及之后的额外列。
-"""
+The input is usually: SMILES <tab|space> docking_score [extra...]
+The output is: SMILES docking_score QED SA [extra...]
+If the original file already contains >= 4 columns, the 3/4th column will be regarded as the old QED/SA and overwritten, and the 5th and subsequent additional columns will be retained. """
 
 import argparse
 import os

@@ -1,4 +1,4 @@
-# 指标计算（对比/分析）
+# Indicator calculation (comparison/analysis)
 import argparse
 import os
 import numpy as np
@@ -9,31 +9,31 @@ from rdkit.Chem import QED
 from rdkit.Chem.rdMolDescriptors import GetMorganFingerprintAsBitVect
 from tdc import Oracle, Evaluator
 
-# 使用TDC进行所有指标评估
+# Use TDC for all metric evaluations
 qed_evaluator = Oracle('qed')
 sa_evaluator = Oracle('sa')
 diversity_evaluator = Evaluator(name='Diversity')
-# 注意: TDC的Novelty评估器需要一个初始SMILES列表进行初始化
-# 我们将在主函数中根据参数动态创建它
+# NOTE: TDC's Novelty evaluator requires an initial SMILES list for initialization
+# We will create it dynamically in the main function based on the parameters
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 def calculate_sa_scores(smiles_list: list) -> list:
-    """使用TDC Oracle批量计算SA分数。"""
+    """Use TDC Oracle to calculate SA scores in batches."""
     if not smiles_list:
         return []
-    print(f"使用TDC批量计算 {len(smiles_list)} 个分子的SA分数...")
+    print(f"Use TDC to batch calculate the SA fraction of {len(smiles_list)} molecules...")
     return sa_evaluator(smiles_list)
 
 def calculate_qed_scores(smiles_list: list) -> list:
-    """使用TDC Oracle批量计算QED分数。"""
+    """Use TDC Oracle to calculate QED scores in batches."""
     if not smiles_list:
         return []
-    print(f"使用TDC批量计算 {len(smiles_list)} 个分子的QED分数...")
+    print(f"Batch calculation of QED scores for {len(smiles_list)} molecules using TDC...")
     return qed_evaluator(smiles_list)
 
-def load_smiles_from_file(filepath):   #加载smile
+def load_smiles_from_file(filepath):   #Load smile
     smiles_list = []    
     with open(filepath, 'r') as f:
         for line in f:
@@ -42,7 +42,7 @@ def load_smiles_from_file(filepath):   #加载smile
                 smiles_list.append(smiles)    
     return smiles_list
 
-def load_smiles_and_scores_from_file(filepath):   #加载smile和score：对接之后输出文件（带分数）
+def load_smiles_and_scores_from_file(filepath):   #Load smile and score: output file (with fraction) after docking
     molecules = []
     scores = []
     smiles_list = []    
@@ -85,15 +85,15 @@ def calculate_docking_stats(scores):
     return top1_score, top10_mean, top100_mean
 
 def calculate_novelty(current_smiles: list, initial_smiles_list: list) -> float:
-    """使用TDC Evaluator计算新颖性。"""
+    """Novelty is calculated using TDC Evaluator."""
     if not current_smiles:
         return 0.0
-    # 正确用法: 直接按位置传入参数
+    # Correct usage: Pass parameters directly by position
     novelty_evaluator = Evaluator(name='Novelty')
     return novelty_evaluator(current_smiles, initial_smiles_list)
 
 def calculate_top100_diversity(smiles_list: list) -> float:
-    """使用TDC Evaluator计算Top-100的多样性。"""
+    """Use TDC Evaluator to calculate the top-100 diversity."""
     top_smiles = smiles_list[:min(100, len(smiles_list))]
     if not top_smiles:
         return 0.0
@@ -111,7 +111,7 @@ def main():
                         help="Path to the SMILES file of the initial population (for novelty calculation).")
     parser.add_argument("--output_file", type=str, required=True,
                         help="Path to the output file to save calculated metrics (e.g., results.txt or results.csv).")
-    # Top-1可行性统计阈值（与 FFHS 选择/最终Top-1规则对齐）
+    # Top-1 feasibility statistic threshold (aligned with FFHS selection/final Top-1 rules)
     parser.add_argument("--qed_min", type=float, default=0.5, help="Feasible rule: QED >= qed_min (default: 0.5)")
     parser.add_argument("--sa_max", type=float, default=5.0, help="Feasible rule: SA <= sa_max (default: 5.0)")
     
@@ -120,24 +120,24 @@ def main():
     print(f"Using initial population for novelty: {args.initial_population_file}")
     print(f"Saving results to: {args.output_file}")
 
-    # 加载当前SMILES和对接分数
+    # Load current SMILES and docking scores
     current_smiles_list, scored_molecules_smiles, docking_scores = load_smiles_and_scores_from_file(args.current_population_docked_file)
     
-    # 对接分数排序
+    # Docking score sorting
     if scored_molecules_smiles and docking_scores:
         molecules_with_scores = sorted(zip(scored_molecules_smiles, docking_scores), key=lambda x: x[1])
         sorted_smiles = [s for s, _ in molecules_with_scores]
     else:
-        sorted_smiles = current_smiles_list # 如果没有分数，则使用原始顺序
+        sorted_smiles = current_smiles_list # If there are no scores, the original order is used
         
     # 1. Docking Score Metrics
     top1_score, top10_mean_score, top100_mean_score = calculate_docking_stats(docking_scores)
     
-    # 定义用于计算所有属性指标的精英分子群体 (Top 100)
+    # Define the elite group (Top 100) used to calculate all attribute metrics
     smiles_for_scoring = sorted_smiles[:min(100, len(sorted_smiles))]
     score_description = f"Top {len(smiles_for_scoring)}"
 
-    # 2. Novelty (基于Top 100精英种群)
+    # 2. Novelty (based on Top 100 elite populations)
     initial_smiles = load_smiles_from_file(args.initial_population_file)
     novelty = calculate_novelty(smiles_for_scoring, initial_smiles)
     
@@ -151,7 +151,7 @@ def main():
     mean_qed = np.mean(qed_scores) if qed_scores else np.nan
     mean_sa = np.mean(sa_scores) if sa_scores else np.nan
 
-    # 4.1 Top-1（按对接）对应的QED/SA，以及“可行Top-1”（满足QED/SA阈值下的最优对接）
+    # 4.1 QED/SA corresponding to Top-1 (by docking), and "feasible Top-1" (optimal docking that meets the QED/SA threshold)
     top1_qed = np.nan
     top1_sa = np.nan
     feasible_top1_docking = np.nan
@@ -168,20 +168,20 @@ def main():
         feasible_ratio = float(sum(feas_mask)) / float(n) if n > 0 else np.nan
         feasible_candidates = [(top_pairs[i][1], float(qed_scores[i]), float(sa_scores[i])) for i in range(n) if feas_mask[i]]
         if feasible_candidates:
-            feasible_candidates.sort(key=lambda x: x[0])  # docking越小越好
+            feasible_candidates.sort(key=lambda x: x[0])  # The smaller the docking, the better
             feasible_top1_docking, feasible_top1_qed, feasible_top1_sa = feasible_candidates[0]
 
-    # 安全地处理可能包含特殊字符的文件名
+    # Safely handle filenames that may contain special characters
     population_filename = os.path.basename(args.current_population_docked_file)
     initial_population_filename = os.path.basename(args.initial_population_file)    
-    # 为了避免f-string格式化问题，使用传统的字符串格式化
+    # To avoid f-string formatting issues, use traditional string formatting
     results = "Metrics for Population: {}\n".format(population_filename)
     results += "--------------------------------------------------\n"
     results += "Total molecules processed: {}\n".format(len(current_smiles_list))
     results += "Valid RDKit molecules for properties: {}\n".format(len(sorted_smiles))
     results += "Molecules with docking scores: {}\n".format(len(docking_scores))
     results += "--------------------------------------------------\n"    
-    # 处理浮点数格式化，注意处理NaN情况
+    # Handle floating point number formatting, pay attention to handling NaN situations
     if np.isnan(top1_score): #top1
         results += "Docking Score - Top 1: N/A\n"
     else:
@@ -211,7 +211,7 @@ def main():
     else:
         results += "SA Score - {} Mean: {:.4f}\n".format(score_description, mean_sa)    
     results += "--------------------------------------------------\n"
-    # 可行Top-1统计（用于解释“Top-1 QED掉得很厉害”的现象：极致对接可能对应很低QED）
+    # Feasible Top-1 statistics (used to explain the phenomenon of "Top-1 QED drops very much": extreme docking may correspond to very low QED)
     if np.isnan(feasible_ratio):
         results += "Feasible Ratio (QED>=%.2f, SA<=%.2f): N/A\n" % (args.qed_min, args.sa_max)
     else:

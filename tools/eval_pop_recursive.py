@@ -27,7 +27,7 @@ def _pick_column(df: pd.DataFrame, candidates: Iterable[str], name: str) -> str:
     for col in candidates:
         if col in df.columns:
             return col
-    raise ValueError(f"缺少{name}列，候选列={tuple(candidates)}，当前列={list(df.columns)}")
+    raise ValueError(f"Missing column {name}, candidate column = {tuple(candidates)}, current column = {list(df.columns)}")
 
 
 def _is_valid_smiles(smiles: str) -> bool:
@@ -114,35 +114,35 @@ def _compute_metrics(smiles_sorted: list[str], docking_sorted: list[float], init
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="递归评估目录下所有pop.csv并汇总均值")
-    parser.add_argument("-i", "--input_dir", required=True, help="输入目录，递归搜索pop.csv")
+    parser = argparse.ArgumentParser(description="Recursively evaluate all pop.csv in the directory and summarize the average")
+    parser.add_argument("-i", "--input_dir", required=True, help="Enter the directory and search recursively for pop.csv")
     parser.add_argument(
         "--initial_population_file",
         default=str(DEFAULT_INITIAL_POP),
-        help="用于Novelty计算的初始种群SMILES文件",
+        help="Initial population SMILES file used for Novelty calculations",
     )
     parser.add_argument(
         "--output_prefix",
         default="eval_pop",
-        help="输出文件前缀（会输出 *_per_file.csv 和 *_mean.csv）",
+        help="Output file prefix (*_per_file.csv and *_mean.csv will be output)",
     )
     args = parser.parse_args()
 
     input_dir = Path(args.input_dir).resolve()
     initial_pop_file = Path(args.initial_population_file).resolve()
     if not input_dir.exists():
-        raise FileNotFoundError(f"输入目录不存在: {input_dir}")
+        raise FileNotFoundError(f"Input directory does not exist: {input_dir}")
     if not initial_pop_file.exists():
-        raise FileNotFoundError(f"初始种群文件不存在: {initial_pop_file}")
+        raise FileNotFoundError(f"Initial population file does not exist: {initial_pop_file}")
 
     pop_files = sorted(input_dir.rglob("pop.csv"))
     if not pop_files:
-        print(f"未在目录下找到pop.csv: {input_dir}")
+        print(f"pop.csv not found in directory: {input_dir}")
         return
 
     initial_smiles = _load_initial_smiles(initial_pop_file)
     if not initial_smiles:
-        raise ValueError(f"初始种群文件中没有可用SMILES: {initial_pop_file}")
+        raise ValueError(f"No SMILES available in initial population file: {initial_pop_file}")
 
     rows: list[dict[str, float | str]] = []
     for pop_file in pop_files:
@@ -168,15 +168,15 @@ def main() -> None:
     per_file_df.to_csv(out_per_file, index=False)
     mean_df.to_csv(out_mean, index=False)
 
-    print(f"输入目录: {input_dir}")
-    print(f"初始种群: {initial_pop_file}")
-    print(f"共找到pop.csv数量: {len(pop_files)}")
-    print("\n[每个pop.csv指标]")
+    print(f"Input directory: {input_dir}")
+    print(f"Initial population: {initial_pop_file}")
+    print(f"Total number of pop.csv found: {len(pop_files)}")
+    print("\\n[Indicators per pop.csv]")
     print(per_file_df.to_string(index=False, justify="left"))
-    print("\n[所有pop.csv均值]")
+    print("\\n[Mean of all pop.csv]")
     print(mean_df.to_string(index=False, justify="left"))
-    print(f"\n已保存: {out_per_file}")
-    print(f"已保存: {out_mean}")
+    print(f"\nSaved: {out_per_file}")
+    print(f"Saved: {out_mean}")
 
 
 if __name__ == "__main__":

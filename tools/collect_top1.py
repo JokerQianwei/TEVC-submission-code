@@ -134,24 +134,24 @@ def _list_dirs_at_depth(root: Path, depth: int) -> List[Path]:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="收集 pop.csv 的 top1（最小 docking_score）")
+    p = argparse.ArgumentParser(description="Collect top1 (minimum docking_score) of pop.csv")
     g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument("-i", "--input", help="根目录（会递归查找 pop.csv）或单个 pop.csv 文件")
-    g.add_argument("-r", "--run-dir", help="并行处理该目录下一层所有子目录（等价并行执行多次 -i）")
-    p.add_argument("-o", "--output", default=None, help="输出 CSV 路径；仅 -i 模式可用，默认 <input>/top1_per_pop.csv")
+    g.add_argument("-i", "--input", help="Root directory (pop.csv will be looked up recursively) or a single pop.csv file")
+    g.add_argument("-r", "--run-dir", help="Process all subdirectories below the directory in parallel (equivalent to executing multiple times in parallel -i)")
+    p.add_argument("-o", "--output", default=None, help="Output CSV path; only available in -i mode, defaults to <input>/top1_per_pop.csv")
     p.add_argument(
         "-j",
         "--workers",
         type=int,
         default=1,
-        help="-i: 读取 pop.csv 的线程数；-r: 子目录并行数",
+        help="-i: Number of threads to read pop.csv; -r: Number of parallel subdirectories",
     )
     p.add_argument(
         "-d",
         "--run-depth",
         type=int,
         default=1,
-        help="-r 模式处理的目录层级（默认 1，表示下一层子目录；2 表示下两层目录）",
+        help="Directory level processed by -r mode (default 1, indicates the next subdirectory; 2 indicates the next two levels of directories)",
     )
     args = p.parse_args()
     workers = max(1, args.workers)
@@ -170,9 +170,9 @@ def main() -> None:
         return
 
     if args.output:
-        p.error("-r 模式不支持 -o；每个子目录会写入各自的 top1_per_pop.csv")
+        p.error("-o is not supported in -r mode; each subdirectory will write its own top1_per_pop.csv")
     if args.run_depth < 1:
-        p.error("--run-depth 必须 >= 1")
+        p.error("--run-depth must >= 1")
 
     run_root = Path(args.run_dir).expanduser().resolve()
     subdirs = _list_dirs_at_depth(run_root, args.run_depth)

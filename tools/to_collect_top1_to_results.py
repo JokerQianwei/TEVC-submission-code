@@ -127,41 +127,41 @@ def _write_manifest(rows: List[Tuple[str, str, int]], out_dir: Path) -> Path:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="汇总 top1_per_pop.csv 到 results 目录并统一重命名")
+    p = argparse.ArgumentParser(description="Summarize top1_per_pop.csv to the results directory and rename them uniformly")
     p.add_argument(
         "-r",
         "--roots",
         nargs="+",
         required=True,
-        help="输入根目录（可多个）或单个 top1_per_pop.csv 文件",
+        help="Enter the root directory (can be multiple) or a single top1_per_pop.csv file",
     )
     p.add_argument(
         "-o",
         "--out-dir",
         default="results/top1_collected",
-        help="输出目录，默认 results/top1_collected",
+        help="Output directory, default results/top1_collected",
     )
     p.add_argument(
         "--move",
         action="store_true",
-        help="移动文件（默认复制）",
+        help="Move files (default copy)",
     )
     p.add_argument(
         "--keep-levels",
         type=int,
         default=3,
-        help="文件名保留的相对层级数（默认 3）",
+        help="Number of relative levels to keep in filenames (default 3)",
     )
     p.add_argument(
         "--max-depth",
         type=int,
         default=3,
-        help="递归搜索最大层级（默认 3，传 -1 表示不限制）",
+        help="Maximum level of recursive search (default 3, pass -1 to indicate no limit)",
     )
     p.add_argument(
         "--overwrite",
         action="store_true",
-        help="若目标文件已存在则覆盖（默认自动追加 __2/__3 防冲突）",
+        help="If the target file already exists, overwrite it (default automatically appends __2/__3 to prevent conflicts)",
     )
     args = p.parse_args()
 

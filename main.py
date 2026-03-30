@@ -66,8 +66,7 @@ def run_workflow_for_receptor(
     plot_top1: bool = False,
     softbd_sampler=None,
 ) -> Tuple[str, bool]:
-    """
-    Run the full SoftGA workflow for a single receptor (process-safe wrapper).
+    """     Run the full SoftGA workflow for a single receptor (process-safe wrapper).
 
     Args:
         config_path: Path to the YAML config file.
@@ -91,17 +90,16 @@ def run_workflow_for_receptor(
         nucleus_p: SoftBD nucleus_p.
         gpu_max_batch_size: SoftBD gpu_max_batch_size.
         initial_samples: SoftBD initial_samples.
-        gen1_selection_mode: SoftBD Gen1 选择模式 (maxmin | random)。
-        number_of_crossovers: crossover.number_of_crossovers 覆盖值。
-        pair_min_tanimoto: crossover.pair_min_tanimoto 覆盖值。
-        pair_max_tanimoto: crossover.pair_max_tanimoto 覆盖值。
-        number_of_mutants: mutation.number_of_mutants 覆盖值。
-        enable_crowding_distance: 覆盖 selection.*_settings.enable_crowding_distance。
-        max_oracle_calls: Oracle 预算（仅统计成功 docking）。
+        gen1_selection_mode: SoftBD Gen1 selection mode (maxmin | random).
+        number_of_crossovers: crossover.number_of_crossovers override value.
+        pair_min_tanimoto: crossover.pair_min_tanimoto override value.
+        pair_max_tanimoto: crossover.pair_max_tanimoto override value.
+        number_of_mutants: mutation.number_of_mutants override value.
+        enable_crowding_distance: Overrides selection.*_settings.enable_crowding_distance.
+        max_oracle_calls: Oracle budget (only counts successful docking).
 
     Returns:
-        Tuple[str, bool]: (receptor_display_name, success)
-    """
+        Tuple[str, bool]: (receptor_display_name, success)     """
     receptor_display_name = receptor_name
     
     # Configure receptor-specific logger
@@ -307,16 +305,16 @@ def run_cli(argv=None, softbd_sampler=None) -> int:
         '--initial_population_file',
         type=str,
         default=None,
-        help='(Optional) 覆盖 workflow.initial_population_file',
+        help='(Optional) Override workflow.initial_population_file',
     )
     parser.add_argument(
-        '--strategy_mode',  # 前缀保留策略
+        '--strategy_mode',  # Prefix retention policy
         type=str,
         default=None,
-        help='支持 linear, aggressive, super_aggressive, sigmoid, piecewise, cosine, step, step_20_40_60_80 模式',
+        help='Support linear, aggressive, super_aggressive, sigmoid, piecewise, cosine, step, step_20_40_60_80 modes',
     )
     parser.add_argument(
-        '--max_generations', # 生成代数
+        '--max_generations', # generative algebra
         type=int,
         default=None,
         help='(Optional) Maximum number of generations',
@@ -337,13 +335,13 @@ def run_cli(argv=None, softbd_sampler=None) -> int:
         '--qed_min',
         type=float,
         default=None,
-        help='(Optional) 覆盖 selection.ffhs_settings.constraints.qed_min',
+        help='(Optional) Overrides selection.ffhs_settings.constraints.qed_min',
     )
     parser.add_argument(
         '--sa_max',
         type=float,
         default=None,
-        help='(Optional) 覆盖 selection.ffhs_settings.constraints.sa_max',
+        help='(Optional) Overrides selection.ffhs_settings.constraints.sa_max',
     )
     parser.add_argument(
         '--samples_per_parent',
@@ -374,14 +372,14 @@ def run_cli(argv=None, softbd_sampler=None) -> int:
         nargs='?',
         const='true',
         default=None,
-        help='(Optional) SoftBD recircle 开关 (true/false)，控制跨 run 是否复用上一轮 prefix',
+        help='(Optional) SoftBD recircle switch (true/false), controls whether to reuse the previous round of prefix across runs',
     )
     parser.add_argument(
         '--softbd_enable',
         nargs='?',
         const='true',
         default=None,
-        help='(Optional) SoftBD 总开关 (true/false)',
+        help='(Optional) SoftBD master switch (true/false)',
     )
     parser.add_argument(
         '--softbd_seed_mode',
@@ -423,13 +421,13 @@ def run_cli(argv=None, softbd_sampler=None) -> int:
         '--number_of_processors',
         type=int,
         default=None,
-        help='控制单个任务使用的 CPU 核心数',
+        help='Control the number of CPU cores used by a single task',
     )
     parser.add_argument(
         '--gpu_max_batch_size',
         type=int,
         default=None,
-        help='控制 SoftBD 生成时的最大批次大小',
+        help='Controls the maximum batch size for SoftBD generation',
     )
     parser.add_argument(
         '--steps',
@@ -459,64 +457,64 @@ def run_cli(argv=None, softbd_sampler=None) -> int:
         '--number_of_crossovers',
         type=int,
         default=None,
-        help='(Optional) 覆盖 crossover.number_of_crossovers',
+        help='(Optional) Override crossover.number_of_crossovers',
     )
     parser.add_argument(
         '--pair_min_tanimoto',
         type=float,
         default=None,
-        help='(Optional) 覆盖 crossover.pair_min_tanimoto',
+        help='(Optional) Override crossover.pair_min_tanimoto',
     )
     parser.add_argument(
         '--pair_max_tanimoto',
         type=float,
         default=None,
-        help='(Optional) 覆盖 crossover.pair_max_tanimoto',
+        help='(Optional) Override crossover.pair_max_tanimoto',
     )
     parser.add_argument(
         '--number_of_mutants',
         type=int,
         default=None,
-        help='(Optional) 覆盖 mutation.number_of_mutants',
+        help='(Optional) Overrides mutation.number_of_mutants',
     )
     parser.add_argument(
         '--enable_crowding_distance',
         nargs='?',
         const='true',
         default=None,
-        help='(Optional) 覆盖 selection.*_settings.enable_crowding_distance (true/false)',
+        help='(Optional) Overrides selection.*_settings.enable_crowding_distance (true/false)',
     )
     parser.add_argument(
         '--plot_top1',
         nargs='?',
         const='true',
         default='true',
-        help='(Optional) 运行结束绘制 Top1 曲线 (true/false)',
+        help='(Optional) Draw the Top1 curve at the end of the run (true/false)',
     )
     parser.add_argument(
         '--cleanup_intermediate_files',
         nargs='?',
         const='true',
         default=None,
-        help='(Optional) 覆盖配置中的 cleanup_intermediate_files (true/false)',
+        help='(Optional) Override cleanup_intermediate_files in configuration (true/false)',
     )
     parser.add_argument(
         '--docking_tool',
         type=str,
         default=None,
-        help='(Optional) 对接引擎: qvina02 | vina',
+        help='(Optional) docking engine: qvina02 | vina',
     )
     parser.add_argument(
         '--docking_exhaustiveness',
         type=int,
         default=None,
-        help='(Optional) 覆盖 docking.exhaustiveness',
+        help='(Optional) Override docking.exhaustiveness',
     )
     parser.add_argument(
         '--max_oracle_calls',
         type=int,
         default=None,
-        help='(Optional) Oracle 预算（仅成功 docking 计数）；不设置则关闭预算模式',
+        help='(Optional) Oracle budget (successful docking count only); not set to turn off budget mode',
     )
 
     args = parser.parse_args(argv)
@@ -559,7 +557,7 @@ def run_cli(argv=None, softbd_sampler=None) -> int:
     logger.info("Receptor to run: %s", receptor_to_run)
 
     performance_config = config.get('performance', {})
-    # 优先使用命令行传入的 number_of_processors，如果没有则使用配置文件中的
+    # The number_of_processors passed in the command line will be used first. If not, the number_of_processors in the configuration file will be used.
     inner_processors_config = args.number_of_processors if args.number_of_processors is not None else performance_config.get('number_of_processors', -1)
     
     if inner_processors_config is None:

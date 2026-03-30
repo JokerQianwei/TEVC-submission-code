@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""快速计算单个 SMILES 的 docking score。
+"""Quickly calculate the docking score of a single SMILES.
 python tools/quick_eval_DS.py -i "CCO" -t parp1 -v qvina02
-python tools/quick_eval_DS.py -i "Cc1ccc2cc(C(=O)N=C3C[C@@H](c4ccc5c(c4)=CC(=C4NNC6=C4CC=CC6)N=5)CC=N3)ccc2c1" -t 1KKQ -v vina
-
-"""
+python tools/quick_eval_DS.py -i "Cc1ccc2cc(C(=O)N=C3C[C@@H](c4ccc5c(c4)=CC(=C4NNC6=C4CC=CC6)N=5)CC=N3)ccc2c1" -t 1KKQ -v vina  """
 
 from __future__ import annotations
 
@@ -39,7 +37,7 @@ def _parse_receptor(value: str) -> str:
     canonical = RECEPTOR_NAME_LOOKUP.get(receptor.lower())
     if canonical is None:
         supported = ", ".join(SUPPORTED_RECEPTORS)
-        raise argparse.ArgumentTypeError(f"不支持的受体: {receptor}。可选: {supported}")
+        raise argparse.ArgumentTypeError(f"Unsupported receptor: {receptor}. Optional: {supported}")
     return canonical
 
 
@@ -48,7 +46,7 @@ def _parse_docking_tool(value: str) -> str:
     canonical = DOCKING_TOOL_ALIASES.get(tool)
     if canonical is None:
         supported = ", ".join(SUPPORTED_DOCKING_TOOLS)
-        raise argparse.ArgumentTypeError(f"不支持的 docking 模式: {value}。可选: {supported}")
+        raise argparse.ArgumentTypeError(f"Unsupported docking mode: {value}. Optional: {supported}")
     return canonical
 
 
@@ -100,16 +98,16 @@ def _compute_docking(
 def build_parser() -> argparse.ArgumentParser:
     supported = ", ".join(SUPPORTED_RECEPTORS)
     parser = argparse.ArgumentParser(
-        description="快速计算单个 SMILES 的 docking score",
-        epilog=f"支持的 15 个受体: {supported}",
+        description="Quickly calculate the docking score of a single SMILES",
+        epilog=f"15 receptors supported: {supported}",
     )
-    parser.add_argument("-i", "--smiles", required=True, help="输入分子 SMILES")
-    parser.add_argument("-t", "--target", required=True, type=_parse_receptor, help="受体名称，大小写不敏感")
-    parser.add_argument("-v", "--docking-tool", required=True, type=_parse_docking_tool, help="docking 模式: qvina02 或 vina")
-    parser.add_argument("--config_file", type=str, default=DEFAULT_CONFIG, help="配置文件路径")
-    parser.add_argument("--number_of_processors", type=int, default=None, help="并发进程数，默认取 config")
-    parser.add_argument("--seed", type=int, default=None, help="随机种子，默认取 config.workflow.seed")
-    parser.add_argument("-e", "--exhaustiveness", type=int, default=10, help="docking exhaustiveness，默认取 config")
+    parser.add_argument("-i", "--smiles", required=True, help="Enter molecules SMILES")
+    parser.add_argument("-t", "--target", required=True, type=_parse_receptor, help="Receptor name, case insensitive")
+    parser.add_argument("-v", "--docking-tool", required=True, type=_parse_docking_tool, help="docking mode: qvina02 or vina")
+    parser.add_argument("--config_file", type=str, default=DEFAULT_CONFIG, help="Configuration file path")
+    parser.add_argument("--number_of_processors", type=int, default=None, help="Number of concurrent processes, default is config")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed, default is config.workflow.seed")
+    parser.add_argument("-e", "--exhaustiveness", type=int, default=10, help="docking exhaustiveness, the default is config")
     return parser
 
 

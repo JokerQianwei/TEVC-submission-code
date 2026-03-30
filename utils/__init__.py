@@ -1,1 +1,1 @@
-"""SoftGA 工具模块。"""
+"""SoftGA tool module."""
