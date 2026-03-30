@@ -1,0 +1,68 @@
+paths:
+  project_root: .
+
+workflow:
+  seed: 42
+  max_generations: 30
+  initial_population_file: utils/initial_population/initial_population.smi
+  output_directory: output
+
+softbd:
+  gpu: "0"
+  ckpt: weights/50M-epoch9-1145000.ckpt
+  model: small-50M
+  vocab: model/vocab_V2.txt
+  length: 128
+  block_size: 2
+  temperature: 1.1
+  recircle: true
+  seed_mode: random_per_run  # random_per_run | workflow
+
+  sampling:
+    first_hitting: true
+    top1: true
+
+  generation_params:
+    gpu_max_batch_size: 1000
+    samples_per_parent: 10
+    nucleus_p: 1
+    tanimoto_threshold: 0.7  # 距离阈值(dist=1-sim)：先在 dist>=阈值 的候选中随机选；若为空则选 dist 最大者
+    steps: 64
+    initial_samples: 1000
+    gen1_n_select: 100
+    gen1_selection_mode: maxmin  # maxmin | random
+
+  dynamic_strategy:
+    min_keep_ratio: 0.1
+    max_keep_ratio: 1
+    strategy_mode: sigmoid
+
+docking:
+  tool: qvina02  # qvina02 | vina
+  exhaustiveness: 1
+  n_poses: 20    # 不会影响 qvina02 模式
+  energy_range: 4.0  # 不会影响 qvina02 模式
+
+crossover:
+  number_of_crossovers: 100
+
+mutation:
+  number_of_mutants: 100
+  max_attempts_multiplier: 200
+
+selection:
+  selection_mode: ffhs  # ffhs | nsgaii
+  ffhs_settings:
+    n_select: 100
+    enable_crowding_distance: True  
+    constraints:
+      qed_min: 0.5
+      sa_max: 5.0
+  nsgaii_settings:
+    n_select: 100
+
+performance:
+  parallel_processing: true
+  max_workers: 1
+  number_of_processors: -1
+  cleanup_intermediate_files: false

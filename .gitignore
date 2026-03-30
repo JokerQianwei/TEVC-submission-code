@@ -1,0 +1,47 @@
+# outputs
+output/
+outputs/
+SoftGA_output/
+*.log
+*.tmp
+
+# runtime cache
+__pycache__/
+*.pyc
+
+# generated figures / csv
+*.ckpt
+softga.tar.gz
+!IEEE-conference-template-062824/fig1.png
+cutandjoin/img/work.png
+
+# LaTeX artifacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex.gz
+*.toc
+*.vrb
+IEEE-conference-template-062824/build/
+IEEE-conference-template-062824/IEEE-conference-template-062824.pdf
+
+.vscode
+TEVC-LaTeX/softga.pdf
+TEVC-LaTeX/build
+TEVC-LaTeX/bare_jrnl_new_sample4.pdf
+TEVC-LaTeX/New_IEEEtran_how-to.pdf
+TEVC-LaTeX/.DS_Store
+TEVC-LaTeX/image/.DS_Store
+.factory/settings.json
+TEVC-LaTeX/proga.pdf
+TEVC-LaTeX/supplementary.pdf
+.gstack/
